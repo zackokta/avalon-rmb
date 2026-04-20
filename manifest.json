@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "autorun-extension",
+  "description": "Automatic Shopee Data Collection",
+  "version": "1.4.1",
+  "icons": {
+    "16": "icon/16.png",
+    "32": "icon/32.png",
+    "48": "icon/48.png",
+    "96": "icon/96.png",
+    "128": "icon/128.png"
+  },
+  "permissions": ["storage", "tabs", "declarativeNetRequest"],
+  "host_permissions": [
+    "http://10.147.19.169/*",
+    "https://rentmybrowser.com/*",
+    "https://hoarder-backend-api-889965658265.asia-southeast1.run.app/*",
+    "http://34.143.152.195:3100/*",
+    "http://10.121.16.254:3001/*",
+    "https://www.sadcaptcha.com/*",
+    "*://*.shopee.co.id/*",
+    "*://*.shopee.com.my/*",
+    "*://*.shopee.ph/*",
+    "*://*.shopee.sg/*",
+    "*://*.shopee.co.th/*",
+    "*://*.shopee.vn/*",
+    "*://*.shopeesz.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["/inject.js", "content-scripts/content.css"],
+      "matches": [
+        "https://shopee.co.id/*",
+        "https://shopee.com.my/*",
+        "https://shopee.ph/*",
+        "https://shopee.sg/*",
+        "https://shopee.co.th/*",
+        "https://shopee.vn/*"
+      ]
+    }
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Default Popup Title",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.shopee.co.id/*",
+        "*://*.shopee.co.th/*",
+        "*://*.shopee.com.my/*",
+        "*://*.shopee.ph/*",
+        "*://*.shopee.sg/*",
+        "*://*.shopee.vn/*",
+        "*://shop-id.tokopedia.com/*"
+      ],
+      "js": ["content-scripts/content.js"]
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "ruleset_1", "enabled": true, "path": "rules.json" }
+    ]
+  }
+}
