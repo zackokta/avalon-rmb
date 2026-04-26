@@ -25,7 +25,13 @@
                           type: "fetch",
                           url: fetchUrl,
                           data: data,
-                          args: Array.from(args),
+                          args:
+                            args.length > 1 && typeof args[1] === "object"
+                              ? {
+                                  method: args[1].method,
+                                  headers: args[1].headers,
+                                }
+                              : [],
                         },
                       }),
                     );
@@ -67,7 +73,7 @@
                     type: "xhr",
                     url: this._intercepted_url,
                     data: parsedData,
-                    args: this._intercepted_args || [],
+                    args: [],
                   },
                 }),
               );

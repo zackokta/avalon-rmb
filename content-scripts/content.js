@@ -3331,8 +3331,10 @@ var content = function() {
           window.addEventListener(
             "VyuSys_Internal_Sync_99",
             async function (d) {
+              if (!d || !d.detail) return;
               const mockEvent = { data: d.detail };
               d = mockEvent;
+              if (!d.data || typeof d.data !== "object") return;
               const { type: p, data: w, url: b } = d.data;
               if (p !== "fetch") return;
               const x = {
