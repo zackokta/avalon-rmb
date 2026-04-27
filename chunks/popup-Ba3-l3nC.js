@@ -2603,19 +2603,19 @@ const Ge = "https://rentmybrowser.com",
               context: "content-script",
               tabId: b.id,
             },
-          ),
+          ).catch(() => {}),
           await D("startTaskFetching", {
             region: a(),
           }),
           await O.tabs.sendMessage(C, {
             type: "updateMessage",
             content: "Starting task fetching...",
-          }));
+          }).catch(() => {}));
       },
       F = async () => {
         const y = await Y();
         y?.id &&
-          (await D("stopTaskFetching", {}),
+          (await D("stopTaskFetching", {}).catch(() => {}),
           await D(
             "updateFetchingStatus",
             {
@@ -2625,7 +2625,7 @@ const Ge = "https://rentmybrowser.com",
               context: "content-script",
               tabId: y.id,
             },
-          ));
+          ).catch(() => {}));
       },
       U = async () => {
         try {
