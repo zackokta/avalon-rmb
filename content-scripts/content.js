@@ -1,6 +1,14 @@
 var content = function() {
     "use strict";
 
+    // Disable Back/Forward Cache to prevent port disconnection errors
+    window.addEventListener("pageshow", function(event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+    window.addEventListener("unload", function() {});
+
     function Ms(t) {
         return t
     }
