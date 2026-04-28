@@ -3317,15 +3317,13 @@ var content = function() {
                       data: O,
                     };
                   })
-                  .catch(
-                    (O) => (
-                      console.error("Error fetching rating variation:", O),
-                      {
-                        success: !1,
-                        error: O.message,
-                      }
-                    ),
-                  )
+                  .catch((O) => {
+                    console.error("Error fetching rating variation:", O);
+                    return {
+                      success: !1,
+                      error: O.message,
+                    };
+                  })
               );
             }
             return {

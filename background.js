@@ -2308,7 +2308,18 @@ var background = function() {
                 context: "content-script",
                 tabId: u,
               },
-            ).catch((A) => {});
+            ).catch(async (A) => {
+              console.log(
+                "Content script port closed or unreachable. Forcing navigation via chrome.tabs.update",
+              );
+              if (u) {
+                try {
+                  await chrome.tabs.update(u, { url: d.expected_url });
+                } catch (err) {
+                  console.error("Forced navigation also failed:", err);
+                }
+              }
+            });
           } catch (o) {
             console.error("Process task failed:", o);
             const i = o instanceof Error ? o.message : String(o);
