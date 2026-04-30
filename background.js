@@ -1819,17 +1819,25 @@ var background = function() {
       try {
         const t =
             Re + `/intercepted-response?api_key=${encodeURIComponent(je)}`,
-          r = await fetch(t, {
-            method: "POST",
-            cache: "no-cache",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              ...e.payload,
-              key: Be,
+          r = await Promise.race([
+            fetch(t, {
+              method: "POST",
+              cache: "no-cache",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                ...e.payload,
+                key: Be,
+              }),
             }),
-          });
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("Webhook timeout after 10s")),
+                10000,
+              ),
+            ),
+          ]);
         return {
           ok: r.ok,
           status: r.status,
@@ -1848,17 +1856,25 @@ var background = function() {
     async function Dt(e) {
       try {
         const t = Re + `/content-scrape?api_key=${encodeURIComponent(je)}`,
-          r = await fetch(t, {
-            method: "POST",
-            cache: "no-cache",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              ...e.payload,
-              key: Be,
+          r = await Promise.race([
+            fetch(t, {
+              method: "POST",
+              cache: "no-cache",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                ...e.payload,
+                key: Be,
+              }),
             }),
-          });
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("Webhook timeout after 10s")),
+                10000,
+              ),
+            ),
+          ]);
         return {
           ok: r.ok,
           status: r.status,
@@ -1875,656 +1891,593 @@ var background = function() {
       }
     }
     const Ot = Ue(() => {
-        let n = !1, // isFetching: whether we're fetching tasks from backend
-          s, // setTimeout ID
-          a = !1, // uiVisible: whether popup is visible
-          g = new Set(), // activeTabsFetching: tabs currently being processed
-          f = !1, // isExecuting: whether a task is currently executing (NEW FLAG)
-          taskExecutionActive = !1, // Track if task execution is in progress
-          taskCounter = 0; // Counter for micro-bursting rhythm
+      let n = !1, // isFetching: whether we're fetching tasks from backend
+        s, // setTimeout ID
+        a = !1, // uiVisible: whether popup is visible
+        g = new Set(), // activeTabsFetching: tabs currently being processed
+        f = !1, // isExecuting: whether a task is currently executing (NEW FLAG)
+        taskExecutionActive = !1, // Track if task execution is in progress
+        taskCounter = 0, // Counter for micro-bursting rhythm
+        tabTimeouts = new Map(); // Tab Timeout Manager: tabId -> timeoutId
+      activeTabs = new Set(); // Active task tabs: tabId set
 
-        // Enhanced randomization function with wider variance
-        const x = (d, u) => Math.floor(Math.random() * (u - d + 1)) + d;
+      // Enhanced randomization function with wider variance
+      const x = (d, u) => Math.floor(Math.random() * (u - d + 1)) + d;
 
-        // Anti-detection utilities
-        const AntiDetection = {
-          _cachedHeaders: null,
+      // Anti-detection utilities
+      const AntiDetection = {
+        _cachedHeaders: null,
 
-          // Clamp backend delays to local 3-8s range for optimized execution
-          clampDelayConfig: (config) => {
-            const MIN_DELAY = 3000; // 3 seconds (optimized)
-            const MAX_DELAY = 8000; // 8 seconds (optimized)
+        // Clamp backend delays to local 3-8s range for optimized execution
+        clampDelayConfig: (config) => {
+          const MIN_DELAY = 3000; // 3 seconds (optimized)
+          const MAX_DELAY = 8000; // 8 seconds (optimized)
 
-            let delay_min = config.delay_min || MIN_DELAY;
-            let delay_max = config.delay_max || MAX_DELAY;
+          let delay_min = config.delay_min || MIN_DELAY;
+          let delay_max = config.delay_max || MAX_DELAY;
 
-            // Ensure minimum is at least MIN_DELAY
-            if (delay_min < MIN_DELAY) delay_min = MIN_DELAY;
-            // Ensure maximum is at most MAX_DELAY
-            if (delay_max > MAX_DELAY) delay_max = MAX_DELAY;
-            // Ensure min doesn't exceed max after clamping
-            if (delay_min > delay_max) delay_min = delay_max = MAX_DELAY;
+          // Ensure minimum is at least MIN_DELAY
+          if (delay_min < MIN_DELAY) delay_min = MIN_DELAY;
+          // Ensure maximum is at most MAX_DELAY
+          if (delay_max > MAX_DELAY) delay_max = MAX_DELAY;
+          // Ensure min doesn't exceed max after clamping
+          if (delay_min > delay_max) delay_min = delay_max = MAX_DELAY;
 
-            console.log(
-              `[Delay Clamping] Backend: ${config.delay_min}ms-${config.delay_max}ms → Local: ${delay_min}ms-${delay_max}ms`,
-            );
+          console.log(
+            `[Delay Clamping] Backend: ${config.delay_min}ms-${config.delay_max}ms → Local: ${delay_min}ms-${delay_max}ms`,
+          );
 
-            return {
-              ...config,
-              delay_min: delay_min,
-              delay_max: delay_max,
-            };
-          },
+          return {
+            ...config,
+            delay_min: delay_min,
+            delay_max: delay_max,
+          };
+        },
 
-          // Generate random delays with adaptive variance (optimized: 3-8s baseline)
-          randomDelay: (min, max) => {
-            const variance = Math.random();
-            if (variance < 0.1) {
-              // 10% chance of extended pause (think time)
-              return x(max * 1.2, max * 1.8);
-            } else if (variance < 0.2) {
-              // 10% chance of quick action
-              return x(min * 0.5, min * 0.8);
-            }
-            // 80% normal adaptive range - optimized for speed
-            return x(Math.max(3000, min * 0.6), Math.min(8000, max * 0.6));
-          },
+        // Generate random delays with adaptive variance (optimized: 3-8s baseline)
+        randomDelay: (min, max) => {
+          const variance = Math.random();
+          if (variance < 0.1) {
+            // 10% chance of extended pause (think time)
+            return x(max * 1.2, max * 1.8);
+          } else if (variance < 0.2) {
+            // 10% chance of quick action
+            return x(min * 0.5, min * 0.8);
+          }
+          // 80% normal adaptive range - optimized for speed
+          return x(Math.max(3000, min * 0.6), Math.min(8000, max * 0.6));
+        },
 
-          // Generate randomized request headers to avoid fingerprinting (sticky per session)
-          getRandomHeaders: () => {
-            if (AntiDetection._cachedHeaders) return AntiDetection._cachedHeaders;
+        // Generate randomized request headers to avoid fingerprinting (sticky per session)
+        getRandomHeaders: () => {
+          if (AntiDetection._cachedHeaders) return AntiDetection._cachedHeaders;
 
-            const userAgents = [
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            ];
+          const userAgents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          ];
 
-            AntiDetection._cachedHeaders = {
-              "User-Agent":
-                userAgents[Math.floor(Math.random() * userAgents.length)],
-              Accept:
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-              "Accept-Language": [
-                "en-US,en;q=0.9",
-                "en-GB,en;q=0.8",
-                "id-ID,id;q=0.9",
-              ][Math.floor(Math.random() * 3)],
-              "Accept-Encoding": "gzip, deflate, br",
-              DNT: Math.random() > 0.5 ? "1" : "0",
-              "Cache-Control": ["max-age=0", "no-cache", "no-store"][
-                Math.floor(Math.random() * 3)
-              ],
-              Pragma: Math.random() > 0.5 ? "no-cache" : "cache",
-              "Sec-Fetch-Dest": "document",
-              "Sec-Fetch-Mode": "navigate",
-              "Sec-Fetch-Site": Math.random() > 0.7 ? "cross-site" : "none",
-            };
+          AntiDetection._cachedHeaders = {
+            "User-Agent":
+              userAgents[Math.floor(Math.random() * userAgents.length)],
+            Accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": [
+              "en-US,en;q=0.9",
+              "en-GB,en;q=0.8",
+              "id-ID,id;q=0.9",
+            ][Math.floor(Math.random() * 3)],
+            "Accept-Encoding": "gzip, deflate, br",
+            DNT: Math.random() > 0.5 ? "1" : "0",
+            "Cache-Control": ["max-age=0", "no-cache", "no-store"][
+              Math.floor(Math.random() * 3)
+            ],
+            Pragma: Math.random() > 0.5 ? "no-cache" : "cache",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": Math.random() > 0.7 ? "cross-site" : "none",
+          };
 
-            return AntiDetection._cachedHeaders;
-          },
+          return AntiDetection._cachedHeaders;
+        },
 
-          // Apply sticky headers rule using declarativeNetRequest
-          applyStickyHeadersRule: async function() {
-            const headers = AntiDetection.getRandomHeaders();
-            const requestHeaders = Object.entries(headers).map(([key, val]) => ({
-              header: key,
-              operation: 'set',
-              value: val
-            }));
+        // Apply sticky headers rule using declarativeNetRequest
+        applyStickyHeadersRule: async function () {
+          const headers = AntiDetection.getRandomHeaders();
+          const requestHeaders = Object.entries(headers).map(([key, val]) => ({
+            header: key,
+            operation: "set",
+            value: val,
+          }));
 
-            await chrome.declarativeNetRequest.updateDynamicRules({
-              removeRuleIds: [999],
-              addRules: [{
+          await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: [999],
+            addRules: [
+              {
                 id: 999,
                 priority: 1,
                 action: {
-                  type: 'modifyHeaders',
-                  requestHeaders: requestHeaders
+                  type: "modifyHeaders",
+                  requestHeaders: requestHeaders,
                 },
                 condition: {
-                  urlFilter: '*://*.shopee.*/*',
-                  resourceTypes: ['main_frame', 'xmlhttprequest']
-                }
-              }]
-            });
-          },
-
-          // Variable scroll behavior to avoid bot detection
-          getScrollParams: () => {
-            const scrollConfig = {
-              minScrolls: x(3, 8),
-              maxScrolls: x(8, 15),
-              minPause: x(500, 2000),
-              maxPause: x(3000, 8000),
-              useSmooth: Math.random() > 0.3,
-            };
-            return scrollConfig;
-          },
-
-          // Add random think time between actions
-          thinkTime: async (baseMin = 500, baseMax = 2000) => {
-            const randomFactor = Math.random();
-            let delay;
-
-            if (randomFactor < 0.05) {
-              // 5% chance of extended thinking time (still reasonable)
-              delay = x(baseMax * 1.5, baseMax * 2.5);
-            } else if (randomFactor < 0.15) {
-              // 10% chance of very quick action
-              delay = x(baseMin * 0.4, baseMin * 0.8);
-            } else {
-              delay = x(baseMin, baseMax);
-            }
-
-            console.log(`[Anti-Detection] Think time (optimized): ${delay}ms`);
-            return new Promise((resolve) => setTimeout(resolve, delay));
-          },
-
-          // Region-specific safety settings
-          getRegionSafetyMultiplier: (region) => {
-            const safetyMap = {
-              id: 1.0, // Indonesia - baseline
-              my: 1.1, // Malaysia - slightly slower
-              ph: 1.0, // Philippines - baseline
-              sg: 1.2, // Singapore - more aggressive detection
-              th: 1.1, // Thailand - slightly slower
-              vn: 1.0, // Vietnam - baseline
-            };
-            return safetyMap[region] || 1.0;
-          },
-        };
-
-        // Apply sticky headers on startup
-        AntiDetection.applyStickyHeadersRule();
-
-        // Browsing Patterns - simulate realistic user behavior before tasks (optimized)
-        const BrowsingPatterns = {
-          browsedCount: 0,
-          getRandomBrowsingAction: (region) => {
-            // Skip pre-browsing after first task to save time
-            if (BrowsingPatterns.browsedCount > 0 && Math.random() > 0.3) {
-              return null;
-            }
-
-            const rand = Math.random();
-            let action,
-              delay,
-              url = N[region];
-
-            if (rand < 0.2) {
-              // 20% - Visit homepage and scroll
-              action = "homepage_scroll";
-              delay = x(2500, 5000); // Reduced from 5-10s
-            } else if (rand < 0.5) {
-              // 30% - Browse category pages
-              action = "category_browse";
-              delay = x(3000, 6000); // Reduced from 6-12s
-            } else if (rand < 0.7) {
-              // 20% - Search for random product
-              action = "search";
-              delay = x(2000, 4000); // Reduced from 4-8s
-            } else {
-              // 30% - Direct to task (no pre-browsing)
-              return null;
-            }
-
-            BrowsingPatterns.browsedCount++;
-            return { action, delay, url };
-          },
-
-          executeBrowsingPattern: async (action, url, tabId) => {
-            if (!action) return; // No browsing pattern
-
-            try {
-              console.log(`[BrowsingPattern] Executing: ${action}`);
-
-              switch (action) {
-                case "homepage_scroll":
-                  await h(
-                    "clickUrl",
-                    { url: url },
-                    `content-script@${tabId}`,
-                  ).catch(() => {});
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, x(1000, 2000)),
-                  );
-                  await h(
-                    "performRandomScroll",
-                    {},
-                    `content-script@${tabId}`,
-                  ).catch(() => {});
-                  break;
-
-                case "category_browse":
-                  const categories = [
-                    "/search?keyword=shop",
-                    "/search?keyword=product",
-                  ];
-                  const categoryUrl =
-                    url +
-                    categories[Math.floor(Math.random() * categories.length)];
-                  await h(
-                    "clickUrl",
-                    { url: categoryUrl },
-                    `content-script@${tabId}`,
-                  ).catch(() => {});
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, x(1500, 2500)),
-                  );
-                  break;
-
-                case "search":
-                  const searchUrl = url + "/search?keyword=product";
-                  await h(
-                    "clickUrl",
-                    { url: searchUrl },
-                    `content-script@${tabId}`,
-                  ).catch(() => {});
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, x(1000, 2000)),
-                  );
-                  break;
-              }
-            } catch (e) {
-              console.error(`[BrowsingPattern] Error: ${e.message}`);
-            }
-          },
-        };
-
-        // Account Rotation Manager
-        const AccountManager = {
-          accountCount: 5, // Number of accounts to rotate through
-          taskCountPerAccount: {},
-          currentAccountIndex: 0,
-          maxTasksPerAccount: 8, // Switch account after 8 tasks
-          switchThresholdTime: 120 * 60 * 1000, // 2 hours
-          accountStartTime: {},
-
-          initializeAccounts: () => {
-            for (let i = 1; i <= AccountManager.accountCount; i++) {
-              AccountManager.taskCountPerAccount[i] = 0;
-              AccountManager.accountStartTime[i] = Date.now();
-            }
-            console.log(
-              `[AccountManager] Initialized ${AccountManager.accountCount} accounts`,
-            );
-          },
-
-          getNextAccount: async () => {
-            const currentAccount = AccountManager.currentAccountIndex + 1;
-            const taskCount =
-              AccountManager.taskCountPerAccount[currentAccount] || 0;
-            const timeElapsed =
-              Date.now() -
-              (AccountManager.accountStartTime[currentAccount] || Date.now());
-
-            // Check if need to rotate
-            if (
-              taskCount >= AccountManager.maxTasksPerAccount ||
-              timeElapsed > AccountManager.switchThresholdTime
-            ) {
-              console.log(
-                `[AccountManager] Account ${currentAccount} reached limit (${taskCount} tasks, ${Math.round(timeElapsed / 1000)}s). Rotating...`,
-              );
-              AccountManager.currentAccountIndex =
-                (AccountManager.currentAccountIndex + 1) %
-                AccountManager.accountCount;
-              AccountManager.taskCountPerAccount[
-                AccountManager.currentAccountIndex + 1
-              ] = 0;
-              AccountManager.accountStartTime[
-                AccountManager.currentAccountIndex + 1
-              ] = Date.now();
-            }
-
-            const nextAccount = AccountManager.currentAccountIndex + 1;
-            console.log(
-              `[AccountManager] Using account ${nextAccount} (${AccountManager.taskCountPerAccount[nextAccount]} tasks)`,
-            );
-            return nextAccount;
-          },
-
-          recordTaskCompletion: async (accountNum) => {
-            AccountManager.taskCountPerAccount[accountNum] =
-              (AccountManager.taskCountPerAccount[accountNum] || 0) + 1;
-            console.log(
-              `[AccountManager] Account ${accountNum}: ${AccountManager.taskCountPerAccount[accountNum]} tasks completed`,
-            );
-          },
-        };
-
-        // Account rotation disabled - using separate Chrome profiles instead
-        // AccountManager.initializeAccounts();
-
-        async function v(d) {
-          const { isCaptcha: u } = await h(
-            "checkCaptchaSelector",
-            {},
-            {
-              context: "content-script",
-              tabId: d,
-            },
-          );
-          return u;
-        }
-        const I = (d, u) =>
-          [`${u}/verify/`, `${u}/buyer/login`, `${u}/whodunit`].some((w) =>
-            d?.includes(w),
-          );
-        async function k(d) {
-          const m = (
-            await $.tabs.create({
-              url: N[d],
-            })
-          ).id;
-          setTimeout(async () => {
-            (
-              await $.tabs.query({
-                currentWindow: !0,
-              })
-            ).filter((i) => i.url?.includes(N[d])).length > 1 &&
-              typeof m < "u" &&
-              (await $.tabs.remove(m));
-          }, 2e3);
-        }
-        const y = (d) => {
-          const u = Math.random();
-          let m = N[d],
-            w = "home_page";
-          return (
-            u < 0.12
-              ? ((m = `${N[d].replace(/\/$/, "")}/user/voucher-wallet`),
-                (w = "voucher_page"))
-              : Math.random() > 0.5 &&
-                ((m = `${N[d].replace(/\/$/, "")}/cart`), (w = "cart_page")),
-            {
-              tasks: [
-                {
-                  id: 1,
-                  expected_url: m,
-                  task_type: w,
-                  status: "queued",
-                  expiry: "",
-                  key: "",
-                  priority: 1,
+                  urlFilter: "*://*.shopee.*/*",
+                  resourceTypes: ["main_frame", "xmlhttprequest"],
                 },
-              ],
-              config: {
-                delay_min: Math.round(5e3), // 5 seconds minimum (adaptive)
-                delay_max: Math.round(15e3), // 15 seconds maximum (adaptive)
               },
-            }
-          );
-        };
-        async function _(d, u, m, w) {
+            ],
+          });
+        },
+
+        // Variable scroll behavior to avoid bot detection
+        getScrollParams: () => {
+          const scrollConfig = {
+            minScrolls: x(3, 8),
+            maxScrolls: x(8, 15),
+            minPause: x(500, 2000),
+            maxPause: x(3000, 8000),
+            useSmooth: Math.random() > 0.3,
+          };
+          return scrollConfig;
+        },
+
+        // Add random think time between actions
+        thinkTime: async (baseMin = 500, baseMax = 2000) => {
+          const randomFactor = Math.random();
+          let delay;
+
+          if (randomFactor < 0.05) {
+            // 5% chance of extended thinking time (still reasonable)
+            delay = x(baseMax * 1.5, baseMax * 2.5);
+          } else if (randomFactor < 0.15) {
+            // 10% chance of very quick action
+            delay = x(baseMin * 0.4, baseMin * 0.8);
+          } else {
+            delay = x(baseMin, baseMax);
+          }
+
+          console.log(`[Anti-Detection] Think time (optimized): ${delay}ms`);
+          return new Promise((resolve) => setTimeout(resolve, delay));
+        },
+
+        // Region-specific safety settings
+        getRegionSafetyMultiplier: (region) => {
+          const safetyMap = {
+            id: 1.0, // Indonesia - baseline
+            my: 1.1, // Malaysia - slightly slower
+            ph: 1.0, // Philippines - baseline
+            sg: 1.2, // Singapore - more aggressive detection
+            th: 1.1, // Thailand - slightly slower
+            vn: 1.0, // Vietnam - baseline
+          };
+          return safetyMap[region] || 1.0;
+        },
+      };
+
+      // Apply sticky headers on startup
+      AntiDetection.applyStickyHeadersRule();
+
+      // Browsing Patterns - simulate realistic user behavior before tasks (optimized)
+      const BrowsingPatterns = {
+        browsedCount: 0,
+        getRandomBrowsingAction: (region) => {
+          // Skip pre-browsing after first task to save time
+          if (BrowsingPatterns.browsedCount > 0 && Math.random() > 0.3) {
+            return null;
+          }
+
+          const rand = Math.random();
+          let action,
+            delay,
+            url = N[region];
+
+          if (rand < 0.2) {
+            // 20% - Visit homepage and scroll
+            action = "homepage_scroll";
+            delay = x(2500, 5000); // Reduced from 5-10s
+          } else if (rand < 0.5) {
+            // 30% - Browse category pages
+            action = "category_browse";
+            delay = x(3000, 6000); // Reduced from 6-12s
+          } else if (rand < 0.7) {
+            // 20% - Search for random product
+            action = "search";
+            delay = x(2000, 4000); // Reduced from 4-8s
+          } else {
+            // 30% - Direct to task (no pre-browsing)
+            return null;
+          }
+
+          BrowsingPatterns.browsedCount++;
+          return { action, delay, url };
+        },
+
+        executeBrowsingPattern: async (action, url, tabId) => {
+          if (!action) return; // No browsing pattern
+
           try {
-            // Increment task counter for micro-bursting
-            taskCounter++;
+            console.log(`[BrowsingPattern] Executing: ${action}`);
 
-            // Calculate delay based on micro-bursting rhythm
-            let delayMin, delayMax;
-            if (taskCounter <= 4) {
-              // Burst phase: 1-4 tasks with 800-1500ms delays
-              delayMin = 800;
-              delayMax = 1500;
-            } else {
-              // Breath phase: 5th task with 15000-20000ms delay, then reset counter
-              delayMin = 15000;
-              delayMax = 20000;
-              taskCounter = 0; // Reset counter after breath
-            }
+            switch (action) {
+              case "homepage_scroll":
+                await h(
+                  "clickUrl",
+                  { url: url },
+                  `content-script@${tabId}`,
+                ).catch(() => {});
+                await new Promise((resolve) =>
+                  setTimeout(resolve, x(1000, 2000)),
+                );
+                await h(
+                  "performRandomScroll",
+                  {},
+                  `content-script@${tabId}`,
+                ).catch(() => {});
+                break;
 
-            const o = x(delayMin, delayMax),
-              i = `Processing task with ${o}ms delay (burst ${taskCounter + 1}/5)...`;
-            if (a) {
-              await h(
-                "updateMessage",
-                {
-                  message: i,
-                },
-                {
-                  context: "content-script",
-                  tabId: u,
-                },
-              ).catch((A) => {});
-              console.log(i);
+              case "category_browse":
+                const categories = [
+                  "/search?keyword=shop",
+                  "/search?keyword=product",
+                ];
+                const categoryUrl =
+                  url +
+                  categories[Math.floor(Math.random() * categories.length)];
+                await h(
+                  "clickUrl",
+                  { url: categoryUrl },
+                  `content-script@${tabId}`,
+                ).catch(() => {});
+                await new Promise((resolve) =>
+                  setTimeout(resolve, x(1500, 2500)),
+                );
+                break;
+
+              case "search":
+                const searchUrl = url + "/search?keyword=product";
+                await h(
+                  "clickUrl",
+                  { url: searchUrl },
+                  `content-script@${tabId}`,
+                ).catch(() => {});
+                await new Promise((resolve) =>
+                  setTimeout(resolve, x(1000, 2000)),
+                );
+                break;
             }
-            taskExecutionActive = !0;
-            await new Promise((A, p) => {
-              s = setTimeout(() => {
-                A(void 0);
-              }, o);
-            });
-            console.log(`Task processed: ${d.expected_url}`);
+          } catch (e) {
+            console.error(`[BrowsingPattern] Error: ${e.message}`);
+          }
+        },
+      };
+
+      // Account Rotation Manager
+      const AccountManager = {
+        accountCount: 5, // Number of accounts to rotate through
+        taskCountPerAccount: {},
+        currentAccountIndex: 0,
+        maxTasksPerAccount: 8, // Switch account after 8 tasks
+        switchThresholdTime: 120 * 60 * 1000, // 2 hours
+        accountStartTime: {},
+
+        initializeAccounts: () => {
+          for (let i = 1; i <= AccountManager.accountCount; i++) {
+            AccountManager.taskCountPerAccount[i] = 0;
+            AccountManager.accountStartTime[i] = Date.now();
+          }
+          console.log(
+            `[AccountManager] Initialized ${AccountManager.accountCount} accounts`,
+          );
+        },
+
+        getNextAccount: async () => {
+          const currentAccount = AccountManager.currentAccountIndex + 1;
+          const taskCount =
+            AccountManager.taskCountPerAccount[currentAccount] || 0;
+          const timeElapsed =
+            Date.now() -
+            (AccountManager.accountStartTime[currentAccount] || Date.now());
+
+          // Check if need to rotate
+          if (
+            taskCount >= AccountManager.maxTasksPerAccount ||
+            timeElapsed > AccountManager.switchThresholdTime
+          ) {
+            console.log(
+              `[AccountManager] Account ${currentAccount} reached limit (${taskCount} tasks, ${Math.round(timeElapsed / 1000)}s). Rotating...`,
+            );
+            AccountManager.currentAccountIndex =
+              (AccountManager.currentAccountIndex + 1) %
+              AccountManager.accountCount;
+            AccountManager.taskCountPerAccount[
+              AccountManager.currentAccountIndex + 1
+            ] = 0;
+            AccountManager.accountStartTime[
+              AccountManager.currentAccountIndex + 1
+            ] = Date.now();
+          }
+
+          const nextAccount = AccountManager.currentAccountIndex + 1;
+          console.log(
+            `[AccountManager] Using account ${nextAccount} (${AccountManager.taskCountPerAccount[nextAccount]} tasks)`,
+          );
+          return nextAccount;
+        },
+
+        recordTaskCompletion: async (accountNum) => {
+          AccountManager.taskCountPerAccount[accountNum] =
+            (AccountManager.taskCountPerAccount[accountNum] || 0) + 1;
+          console.log(
+            `[AccountManager] Account ${accountNum}: ${AccountManager.taskCountPerAccount[accountNum]} tasks completed`,
+          );
+        },
+      };
+
+      // Account rotation disabled - using separate Chrome profiles instead
+      // AccountManager.initializeAccounts();
+
+      // Alarm listener for periodic task fetching (MV3 resiliency)
+      chrome.alarms.onAlarm.addListener(async (alarm) => {
+        if (alarm.name === "fetchTasks" && n && a) {
+          console.log("[Alarm] Waking up to fetch tasks...");
+          const storage = await chrome.storage.local.get([
+            "captchaFailure",
+            "captchaFailureTime",
+          ]);
+          if (
+            storage.captchaFailure &&
+            storage.captchaFailureTime &&
+            Date.now() - storage.captchaFailureTime < 5 * 60 * 1000
+          ) {
+            console.log(
+              "Skipping task fetch due to recent captcha failure (5min pause)",
+            );
+            return;
+          }
+          const currentTab = await K();
+          if (currentTab?.id) {
+            const region = Ct(currentTab.url);
+            if (region) {
+              try {
+                await W(region);
+              } catch (e) {
+                console.error("[Alarm] Error fetching tasks:", e);
+              }
+            }
+          }
+        }
+      });
+
+      // Offscreen Document for keep-alive (MV3 resiliency)
+      async function createOffscreenDocument() {
+        try {
+          await chrome.offscreen.createDocument({
+            url: chrome.runtime.getURL("offscreen.html"),
+            reasons: ["AUDIO_PLAYBACK"],
+            justification: "Keep service worker alive for continuous scraping",
+          });
+          console.log("[Offscreen] Created keep-alive document");
+        } catch (e) {
+          console.log(
+            "[Offscreen] Document already exists or error:",
+            e.message,
+          );
+        }
+      }
+
+      // Tab Timeout Manager functions
+      function setTabTimeout(tabId) {
+        clearTabTimeout(tabId); // Clear any existing
+        const timeoutId = setTimeout(async () => {
+          console.log(
+            `[TabTimeout] Force closing tab ${tabId} after 150s timeout`,
+          );
+          try {
+            await chrome.tabs.remove(tabId);
+          } catch (e) {
+            console.error(`[TabTimeout] Failed to remove tab ${tabId}:`, e);
+          }
+          tabTimeouts.delete(tabId);
+          // Flag as locally failed
+          const currentTab = await K();
+          if (currentTab?.id === tabId) {
+            await chrome.storage.local.set({ isFetching: false });
             await h(
-              "clickUrl",
+              "updateMessage",
+              { message: "Task timed out locally" },
+              { context: "content-script", tabId },
+            );
+          }
+        }, 150000); // 150 seconds
+        tabTimeouts.set(tabId, timeoutId);
+        activeTabs.add(tabId);
+      }
+
+      function clearTabTimeout(tabId) {
+        const timeoutId = tabTimeouts.get(tabId);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          tabTimeouts.delete(tabId);
+          activeTabs.delete(tabId);
+        }
+      }
+
+      async function cleanupOrphanedTabs() {
+        try {
+          const tabs = await chrome.tabs.query({});
+          for (const tab of tabs) {
+            if (
+              tab.url &&
+              tab.url.includes("shopee") &&
+              !activeTabs.has(tab.id)
+            ) {
+              console.log(`Cleaning up orphaned Shopee tab ${tab.id}`);
+              chrome.tabs.remove(tab.id).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.error("Cleanup error:", e);
+        }
+      }
+
+      async function v(d) {
+        const { isCaptcha: u } = await h(
+          "checkCaptchaSelector",
+          {},
+          {
+            context: "content-script",
+            tabId: d,
+          },
+        );
+        return u;
+      }
+      const I = (d, u) =>
+        [`${u}/verify/`, `${u}/buyer/login`, `${u}/whodunit`].some((w) =>
+          d?.includes(w),
+        );
+      async function k(d) {
+        await cleanupOrphanedTabs();
+        const m = (
+          await $.tabs.create({
+            url: N[d],
+          })
+        ).id;
+        setTabTimeout(m); // Set 150s timeout for new tab
+        setTimeout(async () => {
+          (
+            await $.tabs.query({
+              currentWindow: !0,
+            })
+          ).filter((i) => i.url?.includes(N[d])).length > 1 &&
+            typeof m < "u" &&
+            (await $.tabs.remove(m));
+        }, 2e3);
+      }
+      const y = (d) => {
+        const u = Math.random();
+        let m = N[d],
+          w = "home_page";
+        return (
+          u < 0.12
+            ? ((m = `${N[d].replace(/\/$/, "")}/user/voucher-wallet`),
+              (w = "voucher_page"))
+            : Math.random() > 0.5 &&
+              ((m = `${N[d].replace(/\/$/, "")}/cart`), (w = "cart_page")),
+          {
+            tasks: [
               {
-                url: d.expected_url,
+                id: 1,
+                expected_url: m,
+                task_type: w,
+                status: "queued",
+                expiry: "",
+                key: "",
+                priority: 1,
+              },
+            ],
+            config: {
+              delay_min: Math.round(5e3), // 5 seconds minimum (adaptive)
+              delay_max: Math.round(15e3), // 15 seconds maximum (adaptive)
+            },
+          }
+        );
+      };
+      async function _(d, u, m, w) {
+        try {
+          // Increment task counter for micro-bursting
+          taskCounter++;
+
+          // Calculate delay based on micro-bursting rhythm
+          let delayMin, delayMax;
+          if (taskCounter <= 4) {
+            // Burst phase: 1-4 tasks with 800-1500ms delays
+            delayMin = 800;
+            delayMax = 1500;
+          } else {
+            // Breath phase: 5th task with 15000-20000ms delay, then reset counter
+            delayMin = 15000;
+            delayMax = 20000;
+            taskCounter = 0; // Reset counter after breath
+          }
+
+          const o = x(delayMin, delayMax),
+            i = `Processing task with ${o}ms delay (burst ${taskCounter + 1}/5)...`;
+          if (a) {
+            await h(
+              "updateMessage",
+              {
+                message: i,
               },
               {
                 context: "content-script",
                 tabId: u,
               },
-            ).catch(async (A) => {
-              console.log(
-                "Content script port closed or unreachable. Forcing navigation via chrome.tabs.update",
-              );
-              if (u) {
-                try {
-                  await chrome.tabs.update(u, { url: d.expected_url });
-                } catch (err) {
-                  console.error("Forced navigation also failed:", err);
-                }
-              }
-            });
-          } catch (o) {
-            console.error("Process task failed:", o);
-            const i = o instanceof Error ? o.message : String(o);
-            throw (
-              await h(
-                "updateMessage",
-                {
-                  message: `${i}`,
-                },
-                {
-                  context: "content-script",
-                  tabId: u,
-                },
-              ).catch((A) => {}),
-              await Z(o, "Process Task", {
-                linkPage: d.expected_url,
-                region: O,
-                username: C,
-              }),
-              o
+            ).catch((A) => {});
+            console.log(i);
+          }
+          taskExecutionActive = !0;
+          await new Promise((A, p) => {
+            s = setTimeout(() => {
+              A(void 0);
+            }, o);
+          });
+          console.log(`Task processed: ${d.expected_url}`);
+          await h(
+            "clickUrl",
+            {
+              url: d.expected_url,
+            },
+            {
+              context: "content-script",
+              tabId: u,
+            },
+          ).catch(async (A) => {
+            console.log(
+              "Content script port closed or unreachable. Forcing navigation via chrome.tabs.update",
             );
-          } finally {
-            s = void 0;
-            taskExecutionActive = !1;
-          }
-        }
-        async function S(d) {
-          if ((await new Promise((u) => setTimeout(u, 2e3)), a && n)) {
-            const u = await K();
-            if (!u?.id) return;
-            const m = u.id;
-            if (
-              (await h(
-                "updateMessage",
-                {
-                  message: "Starting task initialization...",
-                },
-                {
-                  context: "content-script",
-                  tabId: m,
-                },
-              ).catch((o) => {}),
-              console.log("Initializing tasks for region:", d),
-              await v(m))
-            ) {
-              if ((await J.getSetting("captchaSolverEnabled")) !== !0) {
-                (console.log("Captcha detected but solver is disabled."),
-                  (n = !1),
-                  await chrome.storage.local.set({ isFetching: false }),
-                  (a = !1),
-                  await h(
-                    "updateFetchingStatus",
-                    {
-                      isFetching: !1,
-                    },
-                    {
-                      context: "content-script",
-                      tabId: m,
-                    },
-                  ).catch((i) => {}),
-                  await h(
-                    "updateMessage",
-                    {
-                      message:
-                        "Captcha detected but solver is disabled. Please solve manually or enable captcha solver in settings.",
-                    },
-                    {
-                      context: "content-script",
-                      tabId: m,
-                    },
-                  ).catch((i) => {}),
-                  await h(
-                    "refreshPage",
-                    {},
-                    {
-                      context: "content-script",
-                      tabId: m,
-                    },
-                  ).catch((i) => {}));
-                return;
-              }
-              if (
-                (await h(
-                  "updateMessage",
-                  {
-                    message: "Captcha page detected. Attempting to solve...",
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((i) => {}),
-                await h(
-                  "solveCaptcha",
-                  {},
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((i) => {}),
-                await new Promise((i) => setTimeout(i, 6e4)),
-                await v(m))
-              ) {
-                ((n = !1),
-                  await chrome.storage.local.set({ isFetching: false }),
-                  (a = !1),
-                  await h(
-                    "updateFetchingStatus",
-                    {
-                      isFetching: !1,
-                    },
-                    {
-                      context: "content-script",
-                      tabId: m,
-                    },
-                  ).catch((i) => {}),
-                  await h(
-                    "updateMessage",
-                    {
-                      message:
-                        "Still blocked after attempt. Please solve manually.",
-                    },
-                    {
-                      context: "content-script",
-                      tabId: m,
-                    },
-                  ).catch((i) => {}));
-                return;
+            if (u) {
+              try {
+                await chrome.tabs.update(u, { url: d.expected_url });
+                setTabTimeout(u);
+              } catch (err) {
+                console.error("Forced navigation also failed:", err);
               }
             }
-            const w = await Ne.fetchTasks(C, {
-              task_type: "tiktokpdp",
-            });
-
-            // Apply delay clamping to ensure backend never forces delays > 15s
-            if (w.config) {
-              w.config = AntiDetection.clampDelayConfig(w.config);
-            }
-
-            if ((console.log("Fetched tasks:", w.tasks), w.error)) {
-              ((n = !1),
-                await chrome.storage.local.set({ isFetching: false }),
-                (a = !1),
-                await h(
-                  "updateFetchingStatus",
-                  {
-                    isFetching: !1,
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((o) => {}),
-                await h(
-                  "updateMessage",
-                  {
-                    message: `ÔØî ${w.error}`,
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((o) => {}));
-              return;
-            }
-            if (w.tasks.length > 0 && a && n) {
-              await h(
-                "updateCurrentTask",
-                {
-                  task: w.tasks[0].expected_url,
-                },
-                {
-                  context: "content-script",
-                  tabId: m,
-                },
-              ).catch((A) => {});
-
-              const o = Math.max(0, Math.round(w.config.delay_min / 4)),
-                i = Math.max(o, Math.round(w.config.delay_max / 4));
-              await _(w.tasks[0], m, o, i);
-            } else
-              ((n = !1),
-                await chrome.storage.local.set({ isFetching: false }),
-                (a = !1),
-                await h(
-                  "updateFetchingStatus",
-                  {
-                    isFetching: !1,
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((o) => {}));
-          }
+          });
+        } catch (o) {
+          console.error("Process task failed:", o);
+          const i = o instanceof Error ? o.message : String(o);
+          throw (
+            await h(
+              "updateMessage",
+              {
+                message: `${i}`,
+              },
+              {
+                context: "content-script",
+                tabId: u,
+              },
+            ).catch((A) => {}),
+            await Z(o, "Process Task", {
+              linkPage: d.expected_url,
+              region: O,
+              username: C,
+            }),
+            o
+          );
+        } finally {
+          s = void 0;
+          taskExecutionActive = !1;
         }
-        async function W(d) {
-          await new Promise((i) => setTimeout(i, 2e3));
+      }
+      async function S(d) {
+        if ((await new Promise((u) => setTimeout(u, 2e3)), a && n)) {
           const u = await K();
-          if (!u?.id) {
-            await k(d);
-            return;
-          }
-          const m = u.id,
-            w = u.url || "";
+          if (!u?.id) return;
+          const m = u.id;
           if (
             (await h(
               "updateMessage",
@@ -2535,38 +2488,13 @@ var background = function() {
                 context: "content-script",
                 tabId: m,
               },
-            ).catch((i) => {}),
+            ).catch((o) => {}),
             console.log("Initializing tasks for region:", d),
-            I(w, N[d]))
+            await v(m))
           ) {
-            if (!u.url?.includes("captcha")) {
-              ((n = !1),
-                await chrome.storage.local.set({ isFetching: false }),
-                (a = !1),
-                await h(
-                  "updateFetchingStatus",
-                  {
-                    isFetching: !1,
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((p) => {}),
-                await h(
-                  "updateMessage",
-                  {
-                    message: "Blocked page detected. Process stopped.",
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((p) => {}));
-              return;
-            }
             if ((await J.getSetting("captchaSolverEnabled")) !== !0) {
-              ((n = !1),
+              (console.log("Captcha detected but solver is disabled."),
+                (n = !1),
                 await chrome.storage.local.set({ isFetching: false }),
                 (a = !1),
                 await h(
@@ -2578,7 +2506,7 @@ var background = function() {
                     context: "content-script",
                     tabId: m,
                   },
-                ).catch((p) => {}),
+                ).catch((i) => {}),
                 await h(
                   "updateMessage",
                   {
@@ -2589,19 +2517,28 @@ var background = function() {
                     context: "content-script",
                     tabId: m,
                   },
-                ).catch((p) => {}));
+                ).catch((i) => {}),
+                await h(
+                  "refreshPage",
+                  {},
+                  {
+                    context: "content-script",
+                    tabId: m,
+                  },
+                ).catch((i) => {}));
               return;
             }
-            (await h(
-              "updateMessage",
-              {
-                message: "Captcha page detected. Attempting to solve...",
-              },
-              {
-                context: "content-script",
-                tabId: m,
-              },
-            ).catch((p) => {}),
+            if (
+              (await h(
+                "updateMessage",
+                {
+                  message: "Captcha page detected. Attempting to solve...",
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((i) => {}),
               await h(
                 "solveCaptcha",
                 {},
@@ -2609,10 +2546,10 @@ var background = function() {
                   context: "content-script",
                   tabId: m,
                 },
-              ).catch((p) => {}),
-              await new Promise((p) => setTimeout(p, 6e4)));
-            const A = await $.tabs.get(m);
-            if (I(A.url || "", N[d])) {
+              ).catch((i) => {}),
+              await new Promise((i) => setTimeout(i, 6e4)),
+              await v(m))
+            ) {
               ((n = !1),
                 await chrome.storage.local.set({ isFetching: false }),
                 (a = !1),
@@ -2625,7 +2562,7 @@ var background = function() {
                     context: "content-script",
                     tabId: m,
                   },
-                ).catch((p) => {}),
+                ).catch((i) => {}),
                 await h(
                   "updateMessage",
                   {
@@ -2636,23 +2573,20 @@ var background = function() {
                     context: "content-script",
                     tabId: m,
                   },
-                ).catch((p) => {}));
+                ).catch((i) => {}));
               return;
             }
           }
-          const o =
-            Math.random() > 0.15
-              ? await Ne.fetchTasks(C, {
-                  region: d,
-                })
-              : y(d);
+          const w = await Ne.fetchTasks(C, {
+            task_type: "tiktokpdp",
+          });
 
           // Apply delay clamping to ensure backend never forces delays > 15s
-          if (o.config) {
-            o.config = AntiDetection.clampDelayConfig(o.config);
+          if (w.config) {
+            w.config = AntiDetection.clampDelayConfig(w.config);
           }
 
-          if ((console.log("Fetched tasks:", o.tasks), o.error)) {
+          if ((console.log("Fetched tasks:", w.tasks), w.error)) {
             ((n = !1),
               await chrome.storage.local.set({ isFetching: false }),
               (a = !1),
@@ -2665,80 +2599,410 @@ var background = function() {
                   context: "content-script",
                   tabId: m,
                 },
-              ).catch((i) => {}),
+              ).catch((o) => {}),
               await h(
                 "updateMessage",
                 {
-                  message: `ÔØî ${o.error}`,
+                  message: `ÔØî ${w.error}`,
                 },
                 {
                   context: "content-script",
                   tabId: m,
                 },
-              ).catch((i) => {}));
+              ).catch((o) => {}));
             return;
           }
-          if (o.tasks.length > 0) {
-            (await h(
+          if (w.tasks.length > 0 && a && n) {
+            await h(
               "updateCurrentTask",
               {
-                task: o.tasks[0].expected_url,
+                task: w.tasks[0].expected_url,
+              },
+              {
+                context: "content-script",
+                tabId: m,
+              },
+            ).catch((A) => {});
+
+            const o = Math.max(0, Math.round(w.config.delay_min / 4)),
+              i = Math.max(o, Math.round(w.config.delay_max / 4));
+            await _(w.tasks[0], m, o, i);
+          } else
+            ((n = !1),
+              await chrome.storage.local.set({ isFetching: false }),
+              (a = !1),
+              await h(
+                "updateFetchingStatus",
+                {
+                  isFetching: !1,
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((o) => {}));
+        }
+      }
+      async function W(d) {
+        if (activeTabs.size >= 2) {
+          console.log(
+            "Max concurrent tabs reached, skipping task for region:",
+            d,
+          );
+          return;
+        }
+        await new Promise((i) => setTimeout(i, 2e3));
+        const u = await K();
+        if (!u?.id) {
+          await k(d);
+          return;
+        }
+        const m = u.id,
+          w = u.url || "";
+        if (
+          (await h(
+            "updateMessage",
+            {
+              message: "Starting task initialization...",
+            },
+            {
+              context: "content-script",
+              tabId: m,
+            },
+          ).catch((i) => {}),
+          console.log("Initializing tasks for region:", d),
+          I(w, N[d]))
+        ) {
+          if (!u.url?.includes("captcha")) {
+            ((n = !1),
+              await chrome.storage.local.set({ isFetching: false }),
+              (a = !1),
+              await h(
+                "updateFetchingStatus",
+                {
+                  isFetching: !1,
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((p) => {}),
+              await h(
+                "updateMessage",
+                {
+                  message: "Blocked page detected. Process stopped.",
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((p) => {}));
+            return;
+          }
+          if ((await J.getSetting("captchaSolverEnabled")) !== !0) {
+            ((n = !1),
+              await chrome.storage.local.set({ isFetching: false }),
+              (a = !1),
+              await h(
+                "updateFetchingStatus",
+                {
+                  isFetching: !1,
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((p) => {}),
+              await h(
+                "updateMessage",
+                {
+                  message:
+                    "Captcha detected but solver is disabled. Please solve manually or enable captcha solver in settings.",
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((p) => {}));
+            return;
+          }
+          (await h(
+            "updateMessage",
+            {
+              message: "Captcha page detected. Attempting to solve...",
+            },
+            {
+              context: "content-script",
+              tabId: m,
+            },
+          ).catch((p) => {}),
+            await h(
+              "solveCaptcha",
+              {},
+              {
+                context: "content-script",
+                tabId: m,
+              },
+            ).catch((p) => {}),
+            await new Promise((p) => setTimeout(p, 6e4)));
+          const A = await $.tabs.get(m);
+          if (I(A.url || "", N[d])) {
+            ((n = !1),
+              await chrome.storage.local.set({ isFetching: false }),
+              (a = !1),
+              await h(
+                "updateFetchingStatus",
+                {
+                  isFetching: !1,
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((p) => {}),
+              await h(
+                "updateMessage",
+                {
+                  message:
+                    "Still blocked after attempt. Please solve manually.",
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((p) => {}));
+            return;
+          }
+        }
+        const o =
+          Math.random() > 0.15
+            ? await Ne.fetchTasks(C, {
+                region: d,
+              })
+            : y(d);
+
+        // Apply delay clamping to ensure backend never forces delays > 15s
+        if (o.config) {
+          o.config = AntiDetection.clampDelayConfig(o.config);
+        }
+
+        if ((console.log("Fetched tasks:", o.tasks), o.error)) {
+          ((n = !1),
+            await chrome.storage.local.set({ isFetching: false }),
+            (a = !1),
+            await h(
+              "updateFetchingStatus",
+              {
+                isFetching: !1,
               },
               {
                 context: "content-script",
                 tabId: m,
               },
             ).catch((i) => {}),
-              a &&
-                (await h(
-                  "updateMessage",
-                  {
-                    message: "Performing random scroll...",
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((i) => {})),
-              (f = !0),
-              await h(
-                "performRandomScroll",
-                {},
-                {
-                  context: "content-script",
-                  tabId: m,
-                },
-              ),
-              a &&
-                (await h(
-                  "updateMessage",
-                  {
-                    message: "Random scroll completed.",
-                  },
-                  {
-                    context: "content-script",
-                    tabId: m,
-                  },
-                ).catch((i) => {})));
-            try {
-              await _(o.tasks[0], m, o.config.delay_min, o.config.delay_max);
-            } finally {
-              f = !1;
-            }
-          } else
-            ((n = !1),
-              await chrome.storage.local.set({ isFetching: false }),
-              (a = !1),
-              await h(
+            await h(
+              "updateMessage",
+              {
+                message: `ÔØî ${o.error}`,
+              },
+              {
+                context: "content-script",
+                tabId: m,
+              },
+            ).catch((i) => {}));
+          return;
+        }
+        let success = false;
+        if (o.tasks.length > 0) {
+          (await h(
+            "updateCurrentTask",
+            {
+              task: o.tasks[0].expected_url,
+            },
+            {
+              context: "content-script",
+              tabId: m,
+            },
+          ).catch((i) => {}),
+            a &&
+              (await h(
                 "updateMessage",
                 {
-                  message: "No tasks available.",
+                  message: "Performing random scroll...",
                 },
                 {
                   context: "content-script",
                   tabId: m,
                 },
-              ).catch((i) => {}),
+              ).catch((i) => {})),
+            (f = !0),
+            await h(
+              "performRandomScroll",
+              {},
+              {
+                context: "content-script",
+                tabId: m,
+              },
+            ),
+            a &&
+              (await h(
+                "updateMessage",
+                {
+                  message: "Random scroll completed.",
+                },
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
+              ).catch((i) => {})));
+          try {
+            await _(o.tasks[0], m, o.config.delay_min, o.config.delay_max);
+            success = true;
+          } finally {
+            f = !1;
+          }
+        } else
+          ((n = !1),
+            await chrome.storage.local.set({ isFetching: false }),
+            (a = !1),
+            await h(
+              "updateMessage",
+              {
+                message: "No tasks available.",
+              },
+              {
+                context: "content-script",
+                tabId: m,
+              },
+            ).catch((i) => {}),
+            await h(
+              "updateFetchingStatus",
+              {
+                isFetching: !1,
+              },
+              {
+                context: "content-script",
+                tabId: m,
+              },
+            ).catch((i) => {}));
+      }
+      if (success) clearTabTimeout(m);
+      (B("startTaskFetching", async ({ data: d }) => {
+        a = !0;
+        const { region: u } = d;
+        if (((O = u), n))
+          return (
+            console.log("Already fetching, request ignored."),
+            {
+              status: "Already fetching",
+            }
+          );
+        const m = await K();
+        if (!m?.id)
+          return (
+            console.log("No Shopee tab found, opening homepage."),
+            await k(u),
+            {
+              status: "No Shopee tab found, homepage opened",
+            }
+          );
+        if (m.url?.includes("tokopedia")) {
+          (console.log(
+            "Detected Tokopedia tab for ID region, initializing TikTok tasks.",
+          ),
+            (n = !0),
+            await chrome.storage.local.set({ isFetching: true }));
+          try {
+            return (
+              await S("id"),
+              {
+                status: "Tokopedia tab detected, initializing TikTok tasks",
+              }
+            );
+          } catch (w) {
+            console.error("Task fetching failed:", w);
+            const o = w instanceof Error ? w.message : String(w);
+            return (
+              await Z(o, "Initialize Task", {
+                region: O,
+                username: C,
+              }),
+              {
+                status: "error",
+                message: o,
+              }
+            );
+          }
+        } else {
+          if (!N[u])
+            return (
+              console.error("Invalid Shopee region:", u),
+              {
+                status: "error",
+                message: "Invalid Shopee region",
+              }
+            );
+          (console.log(`Starting task fetching for region: ${u}`),
+            (n = !0),
+            await chrome.storage.local.set({ isFetching: true }),
+            await createOffscreenDocument());
+          try {
+            // Initial fetch
+            await W(u);
+            // Set up periodic fetching with alarm (every 30 seconds)
+            await chrome.alarms.create("fetchTasks", { periodInMinutes: 0.5 });
+            return {
+              status: "Task fetching started with periodic alarm",
+            };
+          } catch (w) {
+            console.error("Task fetching failed:", w);
+            const o = w instanceof Error ? w.message : String(w);
+            return (
+              await Z(o, "Initialize Task", {
+                region: O,
+                username: C,
+              }),
+              {
+                status: "error",
+                message: o,
+              }
+            );
+          }
+        }
+      }),
+        B("stopTaskFetching", async () => {
+          (s && (clearTimeout(s), (s = void 0)),
+            await chrome.alarms.clear("fetchTasks"),
+            (n = !1),
+            await chrome.storage.local.set({ isFetching: false }),
+            (a = !1),
+            (taskExecutionActive = !1),
+            (taskCounter = 0),
+            await new Promise((u) => setTimeout(u, 500)),
+            g.clear());
+          const d = await K();
+          return (
+            d?.id &&
+              (await h(
+                "updateMessage",
+                {
+                  message: "Task processing is stopped",
+                },
+                {
+                  context: "content-script",
+                  tabId: d.id,
+                },
+              ).catch((u) => {}),
+              await h(
+                "updateCurrentTask",
+                {
+                  task: null,
+                },
+                {
+                  context: "content-script",
+                  tabId: d.id,
+                },
+              ).catch((u) => {}),
               await h(
                 "updateFetchingStatus",
                 {
@@ -2746,248 +3010,150 @@ var background = function() {
                 },
                 {
                   context: "content-script",
-                  tabId: m,
+                  tabId: d.id,
                 },
-              ).catch((i) => {}));
-        }
-        (B("startTaskFetching", async ({ data: d }) => {
-          a = !0;
-          const { region: u } = d;
-          if (((O = u), n))
-            return (
-              console.log("Already fetching, request ignored."),
-              {
-                status: "Already fetching",
-              }
-            );
-          const m = await K();
-          if (!m?.id)
-            return (
-              console.log("No Shopee tab found, opening homepage."),
-              await k(u),
-              {
-                status: "No Shopee tab found, homepage opened",
-              }
-            );
-          if (m.url?.includes("tokopedia")) {
-            (console.log(
-              "Detected Tokopedia tab for ID region, initializing TikTok tasks.",
-            ),
-              (n = !0),
-              await chrome.storage.local.set({ isFetching: true }));
-            try {
-              return (
-                await S("id"),
-                {
-                  status: "Tokopedia tab detected, initializing TikTok tasks",
-                }
-              );
-            } catch (w) {
-              console.error("Task fetching failed:", w);
-              const o = w instanceof Error ? w.message : String(w);
-              return (
-                await Z(o, "Initialize Task", {
-                  region: O,
-                  username: C,
-                }),
-                {
-                  status: "error",
-                  message: o,
-                }
-              );
+              ).catch((u) => {})),
+            console.log("All task processing stopped."),
+            {
+              status: "All processes stopped",
             }
-          } else {
-            if (!N[u])
-              return (
-                console.error("Invalid Shopee region:", u),
-                {
-                  status: "error",
-                  message: "Invalid Shopee region",
-                }
-              );
-            (console.log(`Starting task fetching for region: ${u}`),
-              (n = !0),
-              await chrome.storage.local.set({ isFetching: true }));
+          );
+        }),
+        B("getBackgroundState", async () => {
+          const state = await chrome.storage.local.get({ isFetching: false });
+          console.log("Fetching background state:", {
+            isFetching: state.isFetching,
+          });
+          return {
+            isFetching: state.isFetching,
+          };
+        }),
+        $.tabs.onUpdated.addListener(async (d, u, m) => {
+          if (
+            n &&
+            a &&
+            u.status === "complete" &&
+            m.url?.includes("shopee") &&
+            !g.has(d) &&
+            !f
+          ) {
+            g.add(d);
             try {
-              return (
-                await W(u),
-                {
-                  status: "Task fetching completed",
-                }
-              );
-            } catch (w) {
-              console.error("Task fetching failed:", w);
-              const o = w instanceof Error ? w.message : String(w);
-              return (
-                await Z(o, "Initialize Task", {
-                  region: O,
-                  username: C,
-                }),
-                {
-                  status: "error",
-                  message: o,
-                }
-              );
+              const w = Ct(m.url);
+              w && (await W(w));
+            } finally {
+              g.delete(d);
+            }
+          } else if (
+            n &&
+            a &&
+            u.status === "complete" &&
+            m.url?.includes("tokopedia") &&
+            !g.has(d) &&
+            !f
+          ) {
+            g.add(d);
+            try {
+              await S("id");
+            } finally {
+              g.delete(d);
             }
           }
         }),
-          B("stopTaskFetching", async () => {
-            (s && (clearTimeout(s), (s = void 0)),
-              (n = !1),
-              await chrome.storage.local.set({ isFetching: false }),
-              (a = !1),
-              (taskExecutionActive = !1),
-              (taskCounter = 0),
-              await new Promise((u) => setTimeout(u, 500)),
-              g.clear());
-            const d = await K();
-            return (
-              d?.id &&
-                (await h(
-                  "updateMessage",
-                  {
-                    message: "Task processing is stopped",
-                  },
-                  {
-                    context: "content-script",
-                    tabId: d.id,
-                  },
-                ).catch((u) => {}),
-                await h(
-                  "updateCurrentTask",
-                  {
-                    task: null,
-                  },
-                  {
-                    context: "content-script",
-                    tabId: d.id,
-                  },
-                ).catch((u) => {}),
-                await h(
-                  "updateFetchingStatus",
-                  {
-                    isFetching: !1,
-                  },
-                  {
-                    context: "content-script",
-                    tabId: d.id,
-                  },
-                ).catch((u) => {})),
-              console.log("All task processing stopped."),
-              {
-                status: "All processes stopped",
-              }
-            );
-          }),
-          B("getBackgroundState", async () => {
-            const state = await chrome.storage.local.get({ isFetching: false });
-            console.log("Fetching background state:", {
-              isFetching: state.isFetching,
+        B("webhook", async ({ data: d }) => await Ft(d)),
+        B("webhookTiktok", async ({ data: d }) => await Dt(d)),
+        B("taskFailed", async ({ data: d }) => {
+          console.log("Task failed:", d.reason);
+          await chrome.storage.local.set({ lastError: d.reason });
+        }),
+        B("captchaFailed", async ({ data: d }) => {
+          console.log("Captcha failed after", d.attempts, "attempts");
+          await chrome.storage.local.set({
+            captchaFailure: true,
+            captchaFailureTime: Date.now(),
+          });
+        }),
+        B("exportLogs", async () => {
+          try {
+            const logs = await chrome.storage.local.get(null);
+            const content = JSON.stringify(logs, null, 2);
+            const blob = new Blob([content], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            await chrome.downloads.download({
+              url,
+              filename: `${new Date().toISOString().split("T")[0]}-logs.json`,
             });
-            return {
-              isFetching: state.isFetching,
-            };
-          }),
-          $.tabs.onUpdated.addListener(async (d, u, m) => {
-            if (
-              n &&
-              a &&
-              u.status === "complete" &&
-              m.url?.includes("shopee") &&
-              !g.has(d) &&
-              !f
-            ) {
-              g.add(d);
-              try {
-                const w = Ct(m.url);
-                w && (await W(w));
-              } finally {
-                g.delete(d);
-              }
-            } else if (
-              n &&
-              a &&
-              u.status === "complete" &&
-              m.url?.includes("tokopedia") &&
-              !g.has(d) &&
-              !f
-            ) {
-              g.add(d);
-              try {
-                await S("id");
-              } finally {
-                g.delete(d);
-              }
-            }
-          }),
-          B("webhook", async ({ data: d }) => await Ft(d)),
-          B("webhookTiktok", async ({ data: d }) => await Dt(d)),
-          $.runtime.onStartup.addListener(async () => {
-            ((n = !1), (a = !1), g.clear());
-            await chrome.storage.local.set({ isFetching: false });
-            const d = await K();
-            d?.id &&
-              h(
-                "updateFetchingStatus",
-                {
-                  isFetching: n,
-                },
-                {
-                  context: "content-script",
-                  tabId: d.id,
-                },
-              ).catch((u) => {});
-          }),
-          $.runtime.onInstalled.addListener(async () => {
-            ((n = !1), (a = !1), g.clear());
-            await chrome.storage.local.set({ isFetching: false });
-            const d = await K();
-            d?.id &&
-              h(
-                "updateFetchingStatus",
-                {
-                  isFetching: n,
-                },
-                {
-                  context: "content-script",
-                  tabId: d.id,
-                },
-              ).catch((u) => {});
-          }));
-        let O = "id",
-          C = "";
-        (B("reportRegion", ({ data: d }) => {
+            URL.revokeObjectURL(url);
+          } catch (e) {
+            console.error("Export logs error:", e);
+          }
+        }),
+        $.runtime.onStartup.addListener(async () => {
+          ((n = !1), (a = !1), g.clear());
+          await chrome.storage.local.set({ isFetching: false });
+          const d = await K();
+          d?.id &&
+            h(
+              "updateFetchingStatus",
+              {
+                isFetching: n,
+              },
+              {
+                context: "content-script",
+                tabId: d.id,
+              },
+            ).catch((u) => {});
+        }),
+        $.runtime.onInstalled.addListener(async () => {
+          ((n = !1), (a = !1), g.clear());
+          await chrome.storage.local.set({ isFetching: false });
+          const d = await K();
+          d?.id &&
+            h(
+              "updateFetchingStatus",
+              {
+                isFetching: n,
+              },
+              {
+                context: "content-script",
+                tabId: d.id,
+              },
+            ).catch((u) => {});
+        }));
+      let O = "id",
+        C = "";
+      (B("reportRegion", ({ data: d }) => {
+        const u = d;
+        u &&
+          ((O = u),
+          console.log(`Background updated last known region to: ${u}`));
+      }),
+        B("reportUsername", ({ data: d }) => {
           const u = d;
           u &&
-            ((O = u),
-            console.log(`Background updated last known region to: ${u}`));
+            ((C = u),
+            console.log(`Background updated last known username to: ${u}`));
         }),
-          B("reportUsername", ({ data: d }) => {
-            const u = d;
-            u &&
-              ((C = u),
-              console.log(`Background updated last known username to: ${u}`));
-          }),
-          B("reportError", async ({ data: d }) => {
-            try {
-              const { error: u, event: m, context: w } = d;
-              return (
-                await Z(u, m, w),
-                {
-                  status: "Error logged",
-                }
-              );
-            } catch (u) {
-              return (
-                console.error("Failed to log error:", u),
-                {
-                  status: "Error logging failed",
-                  error: String(u),
-                }
-              );
-            }
-          }),
-          B("keepAlivePing", () => true));
+        B("reportError", async ({ data: d }) => {
+          try {
+            const { error: u, event: m, context: w } = d;
+            return (
+              await Z(u, m, w),
+              {
+                status: "Error logged",
+              }
+            );
+          } catch (u) {
+            return (
+              console.error("Failed to log error:", u),
+              {
+                status: "Error logging failed",
+                error: String(u),
+              }
+            );
+          }
+        }),
+        B("keepAlivePing", () => true));
     });
 
     function Nt() {}
