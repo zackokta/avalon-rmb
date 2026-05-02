@@ -1898,8 +1898,8 @@ var background = function() {
         f = !1, // isExecuting: whether a task is currently executing (NEW FLAG)
         taskExecutionActive = !1, // Track if task execution is in progress
         taskCounter = 0, // Counter for micro-bursting rhythm
-        tabTimeouts = new Map(); // Tab Timeout Manager: tabId -> timeoutId
-      activeTabs = new Set(); // Active task tabs: tabId set
+        tabTimeouts = new Map(), // Tab Timeout Manager: tabId -> timeoutId
+        activeTabs = new Set(); // Active task tabs: tabId set
 
       // Enhanced randomization function with wider variance
       const x = (d, u) => Math.floor(Math.random() * (u - d + 1)) + d;
@@ -2603,7 +2603,7 @@ var background = function() {
               await h(
                 "updateMessage",
                 {
-                  message: `ÔØî ${w.error}`,
+                  message: `❌ ${w.error}`,
                 },
                 {
                   context: "content-script",
@@ -2803,7 +2803,7 @@ var background = function() {
             await h(
               "updateMessage",
               {
-                message: `ÔØî ${o.error}`,
+                message: `❌ ${o.error}`,
               },
               {
                 context: "content-script",
@@ -2885,8 +2885,8 @@ var background = function() {
                 tabId: m,
               },
             ).catch((i) => {}));
+        if (success) clearTabTimeout(m);
       }
-      if (success) clearTabTimeout(m);
       (B("startTaskFetching", async ({ data: d }) => {
         a = !0;
         const { region: u } = d;

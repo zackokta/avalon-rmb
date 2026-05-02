@@ -3011,13 +3011,13 @@ var content = function() {
     var ns = q("<h4>Email: "),
       ss = q("<p><strong>"),
       rs = q(
-        '<div class=current-task><p>­ƒôØ Next URL:</p><a rel="noopener noreferrer">',
+        '<div class=current-task><p>­📝 Next URL:</p><a rel="noopener noreferrer">',
       ),
       os = q(
-        "<div class=hw-top><h4>Username: </h4><p>Status:  <span></span></p><details><summary>­ƒôè Data Statistics</summary><div>",
+        "<div class=hw-top><h4>Username: </h4><p>Status:  <span></span></p><details><summary>📊 Data Statistics</summary><div>",
       ),
       is = q("<h4>Start scraping process at extension popup"),
-      as = q("<p>­ƒô¡ No active task"),
+      as = q("<p>📭 No active task"),
       ls = q("<div>");
     const cs = (t) =>
       (() => {
@@ -3063,7 +3063,7 @@ var content = function() {
             s,
           ),
           o.style.setProperty("font-weight", "bold"),
-          F(o, () => (t.state.isFetching ? "ÔùÅ running" : "Ôùï idle")),
+          F(o, () => (t.state.isFetching ? "● running" : "○ idle")),
           F(
             e,
             Re(ke, {
