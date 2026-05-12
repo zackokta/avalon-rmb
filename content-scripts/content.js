@@ -3469,8 +3469,8 @@ var content = function() {
       constructor() {
         window.hasRun !== !0 &&
           ((window.hasRun = !0),
-          this.setupMessageListener(),
-          this.solveCaptchaLoop());
+          this.setupMessageListener());
+          // this.solveCaptchaLoop());
       }
       setupMessageListener() {
         te.runtime.onMessage.addListener((e, n, s) => {
