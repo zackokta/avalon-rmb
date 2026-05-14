@@ -10,7 +10,14 @@
     "96": "icon/96.png",
     "128": "icon/128.png"
   },
-  "permissions": ["storage", "tabs", "declarativeNetRequest", "alarms"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "alarms",
+    "offscreen"
+  ],
   "host_permissions": [
     "http://10.147.19.169/*",
     "https://rentmybrowser.com/*",

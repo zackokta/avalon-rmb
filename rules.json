@@ -5,7 +5,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopee.co.id",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   },
   {
@@ -14,7 +14,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopeesz.com",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   },
   {
@@ -23,7 +23,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopee.com.my",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   },
   {
@@ -32,7 +32,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopee.ph",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   },
   {
@@ -41,7 +41,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopee.sg",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   },
   {
@@ -50,7 +50,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopee.co.th",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   },
   {
@@ -59,7 +59,7 @@
     "action": { "type": "block" },
     "condition": {
       "urlFilter": "shopee.vn",
-      "resourceTypes": ["image", "media", "font", "stylesheet"]
+      "resourceTypes": ["media"]
     }
   }
 ]

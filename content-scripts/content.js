@@ -9,7 +9,8 @@ var content = function() {
     });
     window.addEventListener("beforeunload", function () {
       try {
-        Y("taskFailed", { reason: "Unexpected Navigation" });
+        // AVALON 4-D FIX: Menelan error Promise saat jembatan port terputus
+        Y("taskFailed", { reason: "Unexpected Navigation" }).catch(() => {});
       } catch (e) {}
     });
 
@@ -852,7 +853,7 @@ var content = function() {
           mode: e.mode ?? "open",
           isolateEvents: e.isolateEvents,
         });
-      a.setAttribute("data-wxt-shadow-root", "");
+      a.setAttribute("data-v-app", "");
       let c;
       const m = () => {
           if (
@@ -3468,9 +3469,8 @@ var content = function() {
       isCurrentlySolving = !1;
       constructor() {
         window.hasRun !== !0 &&
-          ((window.hasRun = !0),
-          this.setupMessageListener());
-          // this.solveCaptchaLoop());
+          ((window.hasRun = !0), this.setupMessageListener());
+        // this.solveCaptchaLoop());
       }
       setupMessageListener() {
         te.runtime.onMessage.addListener((e, n, s) => {
@@ -3965,6 +3965,14 @@ var content = function() {
       const instance = new v();
       let captchaDetectedTime = null;
       while (true) {
+        // AVALON 4-D FIX: Cegah Memory Leak & Zombie Loop jika ekstensi di-reload
+        if (!te?.runtime?.id) {
+          console.log(
+            "[Avalon] Ekstensi di-reload. Mematikan Captcha Monitor lama.",
+          );
+          break;
+        }
+
         if (instance.captchaIsPresent()) {
           if (!captchaDetectedTime) {
             captchaDetectedTime = Date.now();
