@@ -2767,7 +2767,7 @@ var background = (function () {
         d?.includes(w),
       );
     async function k(d) {
-      await cleanupOrphanedTabs();
+      // await cleanupOrphanedTabs();
       const m = (
         await $.tabs.create({
           url: N[d],
@@ -3087,46 +3087,25 @@ var background = (function () {
       }
       const m = u.id,
         w = u.url || "";
-      if (
-        (await h(
-          "updateMessage",
-          {
-            message: "Starting task initialization...",
-          },
-          {
-            context: "content-script",
-            tabId: m,
-          },
-        ).catch((i) => {}),
-        console.log("Initializing tasks for region:", d),
-        I(w, N[d]))
-      ) {
-        if (!u.url?.includes("captcha")) {
-          ((n = !1),
-            await chrome.storage.local.set({ isFetching: false }),
-            (a = !1),
-            await h(
-              "updateFetchingStatus",
-              {
-                isFetching: !1,
-              },
-              {
-                context: "content-script",
-                tabId: m,
-              },
-            ).catch((p) => {}),
-            await h(
-              "updateMessage",
-              {
-                message: "Blocked page detected. Process stopped.",
-              },
-              {
-                context: "content-script",
-                tabId: m,
-              },
-            ).catch((p) => {}));
-          return;
-        }
+      // --- AVALON 4-D MODIFICATION: DUAL-RADAR WAF EVASION ---
+      await h(
+        "updateMessage",
+        { message: "Starting task initialization..." },
+        { context: "content-script", tabId: m },
+      ).catch((i) => {});
+      console.log("Initializing tasks for region:", d);
+
+      // 1. Scan Radar: Apakah Captcha muncul sebagai Overlay HTML?
+      const isOverlayCaptcha = await v(m);
+      // 2. Scan Radar: Apakah terlempar ke URL /verify/ atau /login?
+      const isUrlBlocked = I(w, N[d]);
+
+      if (isOverlayCaptcha || isUrlBlocked) {
+        console.warn(
+          `[Avalon WAF] Ancaman terdeteksi! Overlay: ${isOverlayCaptcha}, URL Blocked: ${isUrlBlocked}`,
+        );
+
+        // Skenario A: Jika Solver DIMATIKAN (Manual Mode) -> Langsung Safety-Net
         if ((await J.getSetting("captchaSolverEnabled")) !== !0) {
           ((n = !1),
             await chrome.storage.local.set({ isFetching: false }),
@@ -3144,66 +3123,70 @@ var background = (function () {
               },
               { context: "content-script", tabId: m },
             ).catch((p) => {}),
-            // Tembakkan Redirect ke Safety Net sesuai region (N[d])
+            // Tembakkan Redirect ke Safety Net sesuai region
             await h(
               "clickUrl",
               { url: "https://rentmybrowser.com/safety-net?from=" + N[d] },
               { context: "content-script", tabId: m },
             ).catch(async (p) => {
-              // Fallback darurat jika jembatan komunikasi port terputus
+              // Fallback jika jembatan komunikasi mati
               await chrome.tabs.update(m, {
                 url: "https://rentmybrowser.com/safety-net?from=" + N[d],
               });
             }));
           return;
         }
-        (await h(
+
+        // Skenario B: Jika Solver DINYALAKAN -> Coba selesaikan
+        await h(
           "updateMessage",
-          {
-            message: "Captcha page detected. Attempting to solve...",
-          },
-          {
-            context: "content-script",
-            tabId: m,
-          },
-        ).catch((p) => {}),
-          await h(
-            "solveCaptcha",
-            {},
-            {
-              context: "content-script",
-              tabId: m,
-            },
-          ).catch((p) => {}),
-          await new Promise((p) => setTimeout(p, 6e4)));
+          { message: "🛡️ Menembus WAF: Mencoba menyelesaikan Captcha..." },
+          { context: "content-script", tabId: m },
+        ).catch((p) => {});
+        await h(
+          "solveCaptcha",
+          {},
+          { context: "content-script", tabId: m },
+        ).catch((p) => {});
+
+        // Tunggu maksimal 60 detik untuk proses penyelesaian
+        await new Promise((p) => setTimeout(p, 60000));
+
+        // Verifikasi Ulang: Apakah masih tertahan Captcha?
         const A = await $.tabs.get(m);
-        if (I(A.url || "", N[d])) {
+        const stillOverlay = await v(m);
+
+        if (I(A.url || "", N[d]) || stillOverlay) {
           ((n = !1),
             await chrome.storage.local.set({ isFetching: false }),
             (a = !1),
             await h(
               "updateFetchingStatus",
-              {
-                isFetching: !1,
-              },
-              {
-                context: "content-script",
-                tabId: m,
-              },
+              { isFetching: !1 },
+              { context: "content-script", tabId: m },
             ).catch((p) => {}),
             await h(
               "updateMessage",
               {
-                message: "Still blocked after attempt. Please solve manually.",
+                message:
+                  "⚠️ Gagal melewati Captcha. Menghindar ke Safety-Net...",
               },
-              {
-                context: "content-script",
-                tabId: m,
-              },
-            ).catch((p) => {}));
+              { context: "content-script", tabId: m },
+            ).catch((p) => {}),
+            // Tembakkan Redirect ke Safety Net jika gagal
+            await h(
+              "clickUrl",
+              { url: "https://rentmybrowser.com/safety-net?from=" + N[d] },
+              { context: "content-script", tabId: m },
+            ).catch(async (p) => {
+              await chrome.tabs.update(m, {
+                url: "https://rentmybrowser.com/safety-net?from=" + N[d],
+              });
+            }));
           return;
         }
       }
+      // --- END OF AVALON WAF EVASION ---
       const o =
         Math.random() > 0.15
           ? await Ne.fetchTasks(C, {
@@ -3518,38 +3501,87 @@ var background = (function () {
           console.error("Export logs error:", e);
         }
       }),
-      $.runtime.onStartup.addListener(async () => {
-        ((n = !1), (a = !1), g.clear());
+      B("keepAlivePing", () => true));
+
+    // --- AVALON 4-D: PROTOKOL KEBANGKITAN (AUTO-RESURRECTION) ---
+    async function protokolKebangkitan() {
+      console.log("[Avalon] Memulai protokol kebangkitan...");
+
+      // 1. Ambil ingatan terakhir dari penyimpanan permanen
+      const ingatan = await chrome.storage.local.get([
+        "isFetching",
+        "captchaFailure",
+        "captchaFailureTime",
+      ]);
+
+      // 2. Cek apakah mesin sedang dalam masa hukuman Captcha (5 menit)
+      const sedangKenaCaptcha =
+        ingatan.captchaFailure &&
+        ingatan.captchaFailureTime &&
+        Date.now() - ingatan.captchaFailureTime < 5 * 60 * 1000;
+
+      if (sedangKenaCaptcha) {
+        console.warn(
+          "[Avalon] Kebangkitan dibatalkan: Masih dalam masa hukuman Captcha.",
+        );
+        n = !1;
+        a = !1;
+        g.clear();
         await chrome.storage.local.set({ isFetching: false });
-        const d = await K();
-        d?.id &&
-          h(
+        return;
+      }
+
+      // 3. Jika isFetching bernilai true, bangkitkan mesin!
+      if (ingatan.isFetching === true) {
+        console.log(
+          "🚀 [Avalon] Status aktif terdeteksi. Melanjutkan panen data...",
+        );
+        n = !0; // Aktifkan flag fetching internal
+        a = !0; // Aktifkan visibilitas UI
+
+        await createOffscreenDocument(); // Pastikan Offscreen tetap hidup
+
+        const m = await K(); // Cari tab Shopee yang tersedia
+        if (m?.id) {
+          // Sinkronisasi status ke UI di tab
+          await h(
             "updateFetchingStatus",
-            {
-              isFetching: n,
-            },
-            {
-              context: "content-script",
-              tabId: d.id,
-            },
-          ).catch((u) => {});
-      }),
-      $.runtime.onInstalled.addListener(async () => {
-        ((n = !1), (a = !1), g.clear());
-        await chrome.storage.local.set({ isFetching: false });
-        const d = await K();
-        d?.id &&
-          h(
-            "updateFetchingStatus",
-            {
-              isFetching: n,
-            },
-            {
-              context: "content-script",
-              tabId: d.id,
-            },
-          ).catch((u) => {});
-      }));
+            { isFetching: true },
+            { context: "content-script", tabId: m.id },
+          ).catch(() => {});
+
+          const region = Ct(m.url);
+          if (region) {
+            console.log(`[Avalon] Melanjutkan tugas di region: ${region}`);
+            // Panggil fungsi utama untuk mulai mengambil tugas kembali
+            await W(region);
+            // Aktifkan kembali denyut nadi (Alarm)
+            await chrome.alarms.create("fetchTasks", { periodInMinutes: 0.5 });
+          }
+        } else {
+          console.log(
+            "[Avalon] Tab hilang saat restart! Menciptakan ulang tab...",
+          );
+          // Gunakan region terakhir yang diketahui (O) atau default 'id'
+          const fallbackRegion = typeof O !== "undefined" && O ? O : "id";
+          await k(fallbackRegion); // Paksa buka tab baru
+          await W(fallbackRegion); // Mulai inisiasi panen
+          await chrome.alarms.create("fetchTasks", { periodInMinutes: 0.5 });
+        }
+      } else {
+        console.log(
+          "[Avalon] Mesin dalam status IDLE. Menunggu perintah manual.",
+        );
+        n = !1;
+        a = !1;
+      }
+    }
+
+    // Daftarkan fungsi kebangkitan ke peristiwa Chrome
+    $.runtime.onStartup.addListener(protokolKebangkitan);
+    $.runtime.onInstalled.addListener(protokolKebangkitan);
+    // --- END OF AVALON AUTO-RESURRECTION ---
+
     let O = "id",
       C = "";
     (B("reportRegion", ({ data: d }) => {
