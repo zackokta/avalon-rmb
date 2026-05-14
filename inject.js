@@ -2,7 +2,6 @@
   "use strict";
 
   // 1. DAFTAR API TARGET (Penyaring Sampah & Pencegah Memory Leak)
-  // Ekstensi hanya akan bekerja jika URL mengandung salah satu rute ini.
   const TARGET_APIS = [
     "/api/v4/pdp/",
     "/api/v2/add_on_deal/",
@@ -24,8 +23,17 @@
     return TARGET_APIS.some((api) => url.includes(api));
   }
 
+  // Helper untuk mengekstrak URL dengan aman dari argumen fetch
+  function getSafeUrl(arg) {
+    if (typeof arg === "string") return arg;
+    if (arg instanceof URL) return arg.href;
+    if (arg instanceof Request) return arg.url;
+    if (arg && typeof arg === "object" && arg.url) return String(arg.url);
+    return "";
+  }
+
   // ==========================================
-  // 2. MODIFIKASI FETCH (Modern API)
+  // 2. MODIFIKASI FETCH (Modern API - Enterprise Grade)
   // ==========================================
   const OriginalFetch = window.fetch;
   window.fetch = new Proxy(OriginalFetch, {
@@ -35,10 +43,7 @@
       fetchPromise
         .then((response) => {
           try {
-            const fetchUrl =
-              args[0] && typeof args[0] === "object" && args[0].url
-                ? args[0].url
-                : args[0];
+            const fetchUrl = getSafeUrl(args[0]);
 
             // HANYA clone dan parse jika URL termasuk dalam target sadapan bosmu!
             if (isTargetUrl(fetchUrl)) {
@@ -67,22 +72,14 @@
                         }),
                       );
                     } catch (dispatchError) {
-                      // ALARM: Jika gagal melempar data ke content.js
                       console.error(
                         "[Avalon Injector] Gagal mengirim event sync:",
                         dispatchError,
-                        "URL:",
-                        fetchUrl,
                       );
                     }
                   })
                   .catch((parseError) => {
-                    // ALARM: Jika Shopee mengganti struktur JSON menjadi tidak valid
-                    console.error(
-                      "[Avalon Injector] Gagal mem-parsing JSON dari URL:",
-                      fetchUrl,
-                      parseError,
-                    );
+                    // Abaikan silent error jika JSON tidak valid dari server
                   });
               }
             }
@@ -94,7 +91,7 @@
           }
         })
         .catch((networkError) => {
-          // Abaikan network error asli (seperti timeout internet), biarkan browser yang mengurus
+          // Abaikan network error asli (seperti timeout internet)
         });
 
       return fetchPromise;
@@ -102,15 +99,15 @@
   });
 
   // ==========================================
-  // 3. MODIFIKASI XHR (Legacy API)
+  // 3. MODIFIKASI XHR (Legacy API - Enterprise Grade)
   // ==========================================
   const OriginalXHR = window.XMLHttpRequest;
   const OriginalOpen = OriginalXHR.prototype.open;
+
   OriginalXHR.prototype.open = new Proxy(OriginalOpen, {
     apply: function (target, thisArg, args) {
       try {
-        thisArg._intercepted_url = args[1];
-        thisArg._intercepted_args = Array.from(args);
+        thisArg._intercepted_url = getSafeUrl(args[1]);
       } catch (e) {
         console.error("[Avalon Injector] Error saat inisialisasi XHR Open:", e);
       }
@@ -128,23 +125,35 @@
             if (isTargetUrl(this._intercepted_url)) {
               const contentType = this.getResponseHeader("content-type");
               if (contentType && contentType.includes("json")) {
-                const parsedData = JSON.parse(this.responseText);
-                window.dispatchEvent(
-                  new CustomEvent("VyuSys_Internal_Sync_99", {
-                    detail: {
-                      type: "xhr",
-                      url: this._intercepted_url,
-                      data: parsedData,
-                      args: [],
-                    },
-                  }),
-                );
+                let parsedData = null;
+
+                // [AVALON FIX]: Menghindari InvalidStateError jika tipe respon bukan text
+                if (this.responseType === "json") {
+                  parsedData = this.response; // Sudah dalam bentuk Objek JSON
+                } else if (
+                  this.responseType === "" ||
+                  this.responseType === "text"
+                ) {
+                  parsedData = JSON.parse(this.responseText); // Masih dalam bentuk String
+                }
+
+                if (parsedData) {
+                  window.dispatchEvent(
+                    new CustomEvent("VyuSys_Internal_Sync_99", {
+                      detail: {
+                        type: "xhr",
+                        url: this._intercepted_url,
+                        data: parsedData,
+                        args: [],
+                      },
+                    }),
+                  );
+                }
               }
             }
           } catch (e) {
             console.error(
-              "[Avalon Injector] Gagal memproses data XHR JSON dari URL:",
-              this._intercepted_url,
+              "[Avalon Injector] Gagal memproses data XHR JSON:",
               e,
             );
           }
@@ -160,6 +169,6 @@
   });
 
   console.log(
-    "[Avalon Injector] Berhasil dimuat dengan fitur Anti-Memory Leak & Error Tracker.",
+    "[Avalon Injector] Berhasil dimuat dengan perlindungan XHR/Fetch tingkat lanjut.",
   );
 })();
