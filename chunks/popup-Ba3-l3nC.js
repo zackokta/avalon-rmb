@@ -2631,52 +2631,35 @@ const Ge = "https://rentmybrowser.com",
         try {
           const y = await Y();
           if (!y?.id) {
-            alert("No active Shopee tab found. Please open a Shopee page.");
+            alert("No active tab found. Please open a target page.");
             return;
           }
-          const b = await fetch(`${Ge}/api/isAuthorized`, {
-            method: "GET",
-            cache: "no-cache",
-            redirect: "manual",
-          });
-          if ((console.log("Login response:", b), b.ok)) {
-            const C = await b.json();
-            (await D(
-              "updateEmail",
-              {
-                email: C.email,
-              },
-              {
-                context: "content-script",
-                tabId: y.id,
-              },
-            ),
-              u(C.email),
-              await ee.setSetting("email", C.email));
-          } else window.open(`${Ge}/login`, "_blank");
-        } catch (y) {
-          console.error("Login failed:", y);
-        }
-      },
-      V = async () => {
-        const y = await Y();
-        if (!y?.id) {
-          alert("No active Shopee tab found. Please open a Shopee page.");
-          return;
-        }
-        (await ee.setSetting("email", ""),
+          const localEmail = "firman.firdaus@avalon.intelligence";
           await D(
             "updateEmail",
-            {
-              email: "",
-            },
-            {
-              context: "content-script",
-              tabId: y.id,
-            },
-          ),
-          n() && (await F()));
-      };
+            { email: localEmail },
+            { context: "content-script", tabId: y.id },
+          );
+          u(localEmail);
+          await ee.setSetting("email", localEmail);
+          console.log(
+            "[Avalon Scraper] Local Authentication Bypass Activated.",
+          );
+        } catch (y) {
+          console.error("Login bypass failed:", y);
+        }
+      },
+        V = async () => {
+          const y = await Y();
+          if (!y?.id) return;
+          await ee.setSetting("email", "");
+          await D(
+            "updateEmail",
+            { email: "" },
+            { context: "content-script", tabId: y.id },
+          );
+          if (n()) await F();
+        };
     return (() => {
       var y = ur(),
         b = y.firstChild,

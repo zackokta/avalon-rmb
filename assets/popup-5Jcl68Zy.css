@@ -1,1 +1,158 @@
-:root{font-family:Inter,system-ui,Avenir,Helvetica,Arial,sans-serif;line-height:1.5;font-weight:400;color-scheme:light dark;color:#ffffffde;background-color:#242424;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;-webkit-text-size-adjust:100%}a{font-weight:500;color:#646cff;text-decoration:inherit}a:hover{color:#535bf2}body{margin:0;display:flex;place-items:center;min-width:320px;min-height:100vh}h1{font-size:3.2em;line-height:1.1}button{border-radius:8px;border:1px solid transparent;padding:.6em 1.2em;font-size:1em;font-weight:500;font-family:inherit;background-color:#1a1a1a;cursor:pointer;transition:border-color .25s}button:hover{border-color:#646cff}button:focus,button:focus-visible{outline:4px auto -webkit-focus-ring-color}@media (prefers-color-scheme: light){:root{color:#213547;background-color:#fff}a:hover{color:#747bff}button{background-color:#f9f9f9}}
+/* =========================================================================
+   AVALON INTELLIGENCE - QUANTUM SLATE THEME (PREMIUM MINIMALIST)
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
+
+:root {
+  font-family: 'Space Mono', monospace; /* Font kustom berkarakter */
+  background-color: #f1f5f9; /* Slate Light Background */
+  color: #1e293b; /* Deep Slate Text */
+}
+
+body {
+  margin: 0;
+  padding: 6px !important;
+  width: 320px;
+  min-height: auto;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Container Utama yang Rapi dan Bersih */
+#root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px !important;
+  width: 100%;
+  border: 2px solid #e2e8f0; /* Garis batas tipis Skandinavia */
+  border-radius: 12px;
+  padding: 12px !important;
+  background-color: #ffffff;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* Header Tanpa Border, Hanya Judul yang Kuat */
+h1, h2, h3, .title {
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin: 0 !important;
+  text-align: center !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  padding-bottom: 2px !important;
+  line-height: 1.2 !important;
+}
+
+/* =========================================================================
+   UNIFIED BUTTON STYLING - CLEAN & CONFLICT-FREE
+   ========================================================================= */
+
+/* Base button styles for ALL buttons - ALWAYS VISIBLE */
+button {
+  width: 100% !important;
+  border-radius: 4px !important;
+  border: none !important;
+  padding: 0.35em 0.8em !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  font-family: inherit !important;
+  transition: background-color 0.2s ease-in-out !important;
+  cursor: pointer !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+  line-height: 1.1 !important;
+  min-height: 28px !important;
+  background-color: #15803d !important; /* Default green (START) */
+  
+  /* FORCED VISIBILITY - Override ANY inline opacity set by JavaScript */
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
+  margin: 4px auto !important;
+  pointer-events: auto !important;
+}
+
+/* CRITICAL: Override JavaScript inline opacity styles */
+button[style*="opacity"] {
+  opacity: 1 !important;
+}
+
+/* STOP button - Orange background - ONLY the last button overall */
+button:last-of-type {
+  background-color: #d97706 !important;
+}
+
+/* GREEN button hover - applies to non-STOP buttons */
+button:not(:last-of-type):hover {
+  background-color: #166534 !important;
+}
+
+/* ORANGE button hover - applies to STOP button */
+button:last-of-type:hover {
+  background-color: #b45309 !important;
+}
+
+/* Active state */
+button:active {
+  filter: brightness(0.9) !important;
+}
+
+/* Parent container safety - ensure buttons can render */
+button * {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Force all parent divs of buttons to be visible */
+div > button,
+div > div > button {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Area Log/Pesan: Minimalis dan Rapi */
+div[style*="padding: 8px"] {
+  border-radius: 6px !important;
+  background-color: #f8fafc !important; /* Sangat Terang */
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important; /* Slate Grey Text */
+  font-size: 0.65rem !important;
+  padding: 8px !important;
+  font-family: 'Space Mono', monospace !important;
+  line-height: 1.4 !important;
+  text-align: left !important;
+}
+
+/* Badge Akun Aktif: Tipis dan Elegan */
+span[style*="font-weight: bold"] {
+  color: #15803d !important; /* Match dengan warna hijau tombol */
+  font-weight: 700 !important;
+}
+
+/* Input fields & text compression */
+input, textarea, select {
+  padding: 0.4em 0.6em !important;
+  font-size: 0.7rem !important;
+  margin: 2px 0 !important;
+}
+
+/* General div compression */
+div {
+  margin: 0 !important;
+}
+
+p {
+  margin: 2px 0 !important;
+  font-size: 0.75rem !important;
+}
+
+/* Footer Sembunyi Total */
+.footer, footer {
+  display: none !important;
+}

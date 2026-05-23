@@ -2217,111 +2217,33 @@ var background = (function () {
     }
     return null;
   }
+
   const K = async () => {
-      try {
-        const t = (
-          await $.tabs.query({
-            active: !0,
-            currentWindow: !0,
-          })
-        ).find(
-          (c) => c.url?.includes("shopee") || c.url?.includes("tokopedia"),
-        );
-        if ((console.log("Active eligible tab found:", t), t)) return t;
-        const r = await $.tabs.query({
-          url: [
-            "*://*.shopee.co.id/*",
-            "*://*.shopee.com.my/*",
-            "*://*.shopee.ph/*",
-            "*://*.shopee.sg/*",
-            "*://*.shopee.co.th/*",
-            "*://*.shopee.vn/*",
-            "*://shop-id.tokopedia.com/*",
-          ],
-        });
-        return (console.log("Found eligible tabs:", r), r[0] || null);
-      } catch (e) {
-        return (console.error("Error finding eligible tab:", e), null);
-      }
-    },
-    Re = "https://hoarder-backend-api-889965658265.asia-southeast1.run.app",
-    Be = "1.4.1",
-    je = "nC7ZtAMzaXiLfWsIkhav1oGwtKXXN+Sy0434Tmv/XsE=";
-  async function Ft(e) {
-    // --- DIRECT TRANSMISSION TO PRIMARY BACKEND ---
     try {
-      const t = Re + `/intercepted-response?api_key=${encodeURIComponent(je)}`,
-        r = await Promise.race([
-          fetch(t, {
-            method: "POST",
-            cache: "no-cache",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              ...e.payload,
-              key: Be,
-            }),
-          }),
-          new Promise((_, reject) =>
-            setTimeout(
-              () => reject(new Error("Webhook timeout after 10s")),
-              10000,
-            ),
-          ),
-        ]);
-      return {
-        ok: r.ok,
-        status: r.status,
-      };
-    } catch (t) {
-      return (
-        console.error("Webhook error:", t),
-        {
-          ok: !1,
-          status: 500,
-          error: t instanceof Error ? t.message : String(t),
-        }
-      );
+      const t = (
+        await $.tabs.query({
+          active: !0,
+          currentWindow: !0,
+        })
+      ).find((c) => c.url?.includes("shopee") || c.url?.includes("tokopedia"));
+      if ((console.log("Active eligible tab found:", t), t)) return t;
+      const r = await $.tabs.query({
+        url: [
+          "*://*.shopee.co.id/*",
+          "*://*.shopee.com.my/*",
+          "*://*.shopee.ph/*",
+          "*://*.shopee.sg/*",
+          "*://*.shopee.co.th/*",
+          "*://*.shopee.vn/*",
+          "*://shop-id.tokopedia.com/*",
+        ],
+      });
+      return (console.log("Found eligible tabs:", r), r[0] || null);
+    } catch (e) {
+      return (console.error("Error finding eligible tab:", e), null);
     }
-  }
-  async function Dt(e) {
-    try {
-      const t = Re + `/content-scrape?api_key=${encodeURIComponent(je)}`,
-        r = await Promise.race([
-          fetch(t, {
-            method: "POST",
-            cache: "no-cache",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              ...e.payload,
-              key: Be,
-            }),
-          }),
-          new Promise((_, reject) =>
-            setTimeout(
-              () => reject(new Error("Webhook timeout after 10s")),
-              10000,
-            ),
-          ),
-        ]);
-      return {
-        ok: r.ok,
-        status: r.status,
-      };
-    } catch (t) {
-      return (
-        console.error("Webhook error:", t),
-        {
-          ok: !1,
-          status: 500,
-          error: t instanceof Error ? t.message : String(t),
-        }
-      );
-    }
-  }
+  };
+
   const Ot = Ue(() => {
     let n = !1, // isFetching: whether we're fetching tasks from backend
       s, // setTimeout ID
@@ -3071,6 +2993,72 @@ var background = (function () {
             ).catch((o) => {}));
       }
     }
+    // --- FUNGSI BYPASS LANGSUNG KE SUPABASE (AVALON DIRECT API) ---
+    async function fetchSupabaseTask(region) {
+      try {
+        const SUPABASE_URL = "https://fzomsxxbqdhgeafhygkp.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6b21zeHhicWRoZ2VhZmh5Z2twIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjc4MTAsImV4cCI6MjA5NDk0MzgxMH0.1jgnNpGYavTM2zUbWZkKbhnXqTMUovcjUEtKEaP4zvk";
+        
+        // Atur nama tabel antrean Anda yang sebenarnya di database Supabase
+        const NAMA_TABEL_ANTREAN = "task_queue";
+        const cleanedUrl = SUPABASE_URL.replace(/\/$/, "");
+        const requestUrl = `${cleanedUrl}/rest/v1/${NAMA_TABEL_ANTREAN}?status=eq.pending&limit=1`;
+        
+        console.log("[Avalon Scraper] Polling ke Supabase:", requestUrl);
+
+        const response = await fetch(requestUrl, {
+          method: "GET",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json"
+          }
+        });
+        
+        if (response.status === 404) {
+          console.error(`[Avalon ETL Error 404]: Alamat API atau Nama Tabel '${NAMA_TABEL_ANTREAN}' salah.`);
+          return null;
+        }
+
+        const tasks = await response.json();
+        if (!tasks || tasks.length === 0) {
+          console.log("[Avalon Scraper] Tidak ada tugas berstatus 'pending'. Antrean kosong.");
+          return null;
+        }
+        
+        const targetTask = tasks[0];
+        console.log("[Avalon Scraper] Mengunci Tugas ID:", targetTask.id, "Target URL:", targetTask.url);
+
+        // Kunci status baris tugas menjadi 'processing' agar tidak direbut node komputer lain
+        const patchUrl = `${cleanedUrl}/rest/v1/${NAMA_TABEL_ANTREAN}?id=eq.${targetTask.id}`;
+        await fetch(patchUrl, {
+          method: "PATCH",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+          },
+          body: JSON.stringify({ status: "processing" })
+        });
+
+        return {
+          tasks: [{
+            id: targetTask.id,
+            expected_url: targetTask.url,
+            task_type: targetTask.task_type || "home_page",
+            status: "queued",
+            expiry: "",
+            key: "",
+            priority: 1
+          }],
+          config: { delay_min: 5000, delay_max: 12000 }
+        };
+      } catch (e) {
+        console.error("[Avalon Scraper Core Fetch Error]:", e);
+        return null;
+      }
+    }
     async function W(d) {
       if (activeTabs.size >= 2) {
         console.log(
@@ -3105,6 +3093,8 @@ var background = (function () {
           `[Avalon WAF] Ancaman terdeteksi! Overlay: ${isOverlayCaptcha}, URL Blocked: ${isUrlBlocked}`,
         );
 
+        const localDashboard = "http://localhost:3000/safety-zone";
+
         // Skenario A: Jika Solver DIMATIKAN (Manual Mode) -> Langsung Safety-Net
         if ((await J.getSetting("captchaSolverEnabled")) !== !0) {
           ((n = !1),
@@ -3126,13 +3116,10 @@ var background = (function () {
             // Tembakkan Redirect ke Safety Net sesuai region
             await h(
               "clickUrl",
-              { url: "https://rentmybrowser.com/safety-net?from=" + N[d] },
+              { url: localDashboard },
               { context: "content-script", tabId: m },
             ).catch(async (p) => {
-              // Fallback jika jembatan komunikasi mati
-              await chrome.tabs.update(m, {
-                url: "https://rentmybrowser.com/safety-net?from=" + N[d],
-              });
+              await chrome.tabs.update(m, { url: localDashboard });
             }));
           return;
         }
@@ -3176,23 +3163,19 @@ var background = (function () {
             // Tembakkan Redirect ke Safety Net jika gagal
             await h(
               "clickUrl",
-              { url: "https://rentmybrowser.com/safety-net?from=" + N[d] },
+              { url: localDashboard },
               { context: "content-script", tabId: m },
             ).catch(async (p) => {
               await chrome.tabs.update(m, {
-                url: "https://rentmybrowser.com/safety-net?from=" + N[d],
+                url: localDashboard,
               });
             }));
           return;
         }
       }
       // --- END OF AVALON WAF EVASION ---
-      const o =
-        Math.random() > 0.15
-          ? await Ne.fetchTasks(C, {
-              region: d,
-            })
-          : y(d);
+      // --- BYPASS: Langsung ke Supabase, skip Ne.fetchTasks ---
+      const o = (await fetchSupabaseTask(d)) || y(d);
 
       // Apply delay clamping to ensure backend never forces delays > 15s
       if (o.config) {
@@ -3618,7 +3601,6 @@ var background = (function () {
   });
 
   function Nt() {}
-
   function ce(e, ...t) {}
   const Lt = {
     debug: (...e) => ce(console.debug, ...e),
@@ -3626,6 +3608,73 @@ var background = (function () {
     warn: (...e) => ce(console.warn, ...e),
     error: (...e) => ce(console.error, ...e),
   };
+
+  // --- ARSITEKTUR NATIVE SUPABASE REST API (FIXED ARGUMENT SEED) ---
+  const SUPABASE_URL = "https://fzomsxxbqdhgeafhygkp.supabase.co";
+  const SUPABASE_ANON_KEY =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6b21zeHhicWRoZ2VhZmh5Z2twIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjc4MTAsImV4cCI6MjA5NDk0MzgxMH0.1jgnNpGYavTM2zUbWZkKbhnXqTMUovcjUEtKEaP4zvk";
+  const SUPABASE_LOGS_ENDPOINT = `${SUPABASE_URL}/rest/v1/ecom_intercepted_logs`;
+
+  async function Ft(e) {
+    try {
+      const payloadData = e.data || e;
+      const supabasePayload = {
+        email: payloadData.email || "bot@extension.local",
+        username: payloadData.username || "scraperbot",
+        data_type: payloadData.api_url ? payloadData.api_url.split("/api/v4/")[1] || "pdp.get_pc" : "pdp.unknown",
+        page_url: payloadData.page_url || "unknown",
+        api_url: payloadData.api_url || "",
+        raw_payload: payloadData
+      };
+      const res = await Promise.race([
+        fetch(SUPABASE_LOGS_ENDPOINT, {
+          method: "POST",
+          cache: "no-cache",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify(supabasePayload),
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000)),
+      ]);
+      return { ok: res.ok, status: res.status };
+    } catch (t) {
+      return { ok: false, status: 500, error: String(t) };
+    }
+  }
+
+  async function Dt(e) {
+    try {
+      const payloadData = e.data || e;
+      const supabasePayload = {
+        email: payloadData.email || "bot@extension.local",
+        username: payloadData.username || "tiktok",
+        data_type: "router.data",
+        page_url: payloadData.page_url || "unknown",
+        api_url: payloadData.api_url || "tiktok/router/data",
+        raw_payload: payloadData
+      };
+      const res = await Promise.race([
+        fetch(SUPABASE_LOGS_ENDPOINT, {
+          method: "POST",
+          cache: "no-cache",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify(supabasePayload),
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000)),
+      ]);
+      return { ok: res.ok, status: res.status };
+    } catch (t) {
+      return { ok: false, status: 500, error: String(t) };
+    }
+  }
+
   let be;
   try {
     ((be = Ot.main()),

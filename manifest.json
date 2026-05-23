@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "autorun-extension",
-  "description": "Automatic Shopee Data Collection",
-  "version": "1.4.1",
+  "name": "Avalon Scraper Core",
+  "description": "Enterprise Market Intelligence Node - Shopee & TikTok Automation Suite",
+  "version": "2.0.0",
   "icons": {
     "16": "icon/16.png",
     "32": "icon/32.png",
@@ -19,11 +19,7 @@
     "offscreen"
   ],
   "host_permissions": [
-    "http://10.147.19.169/*",
-    "https://rentmybrowser.com/*",
-    "https://hoarder-backend-api-889965658265.asia-southeast1.run.app/*",
-    "http://34.143.152.195:3100/*",
-    "http://10.121.16.254:3001/*",
+    "https://fzomsxxbqdhgeafhygkp.supabase.co/*",
     "https://www.sadcaptcha.com/*",
     "*://*.shopee.co.id/*",
     "*://*.shopee.com.my/*",
