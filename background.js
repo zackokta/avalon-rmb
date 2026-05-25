@@ -2997,62 +2997,88 @@ var background = (function () {
     async function fetchSupabaseTask(region) {
       try {
         const SUPABASE_URL = "https://fzomsxxbqdhgeafhygkp.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6b21zeHhicWRoZ2VhZmh5Z2twIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjc4MTAsImV4cCI6MjA5NDk0MzgxMH0.1jgnNpGYavTM2zUbWZkKbhnXqTMUovcjUEtKEaP4zvk";
-        
+        const SUPABASE_ANON_KEY =
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6b21zeHhicWRoZ2VhZmh5Z2twIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjc4MTAsImV4cCI6MjA5NDk0MzgxMH0.1jgnNpGYavTM2zUbWZkKbhnXqTMUovcjUEtKEaP4zvk";
+
         // Atur nama tabel antrean Anda yang sebenarnya di database Supabase
         const NAMA_TABEL_ANTREAN = "task_queue";
         const cleanedUrl = SUPABASE_URL.replace(/\/$/, "");
         const requestUrl = `${cleanedUrl}/rest/v1/${NAMA_TABEL_ANTREAN}?status=eq.pending&limit=1`;
-        
+
         console.log("[Avalon Scraper] Polling ke Supabase:", requestUrl);
 
         const response = await fetch(requestUrl, {
           method: "GET",
           headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json"
-          }
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+          },
         });
-        
+
         if (response.status === 404) {
-          console.error(`[Avalon ETL Error 404]: Alamat API atau Nama Tabel '${NAMA_TABEL_ANTREAN}' salah.`);
+          console.error(
+            `[Avalon ETL Error 404]: Alamat API atau Nama Tabel '${NAMA_TABEL_ANTREAN}' salah.`,
+          );
           return null;
         }
 
         const tasks = await response.json();
         if (!tasks || tasks.length === 0) {
-          console.log("[Avalon Scraper] Tidak ada tugas berstatus 'pending'. Antrean kosong.");
+          console.log(
+            "[Avalon Scraper] Tidak ada tugas berstatus 'pending'. Antrean kosong.",
+          );
           return null;
         }
-        
+
         const targetTask = tasks[0];
-        console.log("[Avalon Scraper] Mengunci Tugas ID:", targetTask.id, "Target URL:", targetTask.url);
+        console.log(
+          "[Avalon Scraper] Mengunci Tugas ID:",
+          targetTask.id,
+          "Target URL:",
+          targetTask.url,
+        );
 
         // Kunci status baris tugas menjadi 'processing' agar tidak direbut node komputer lain
         const patchUrl = `${cleanedUrl}/rest/v1/${NAMA_TABEL_ANTREAN}?id=eq.${targetTask.id}`;
         await fetch(patchUrl, {
           method: "PATCH",
           headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
             "Content-Type": "application/json",
-            "Prefer": "return=minimal"
+            Prefer: "return=minimal",
           },
-          body: JSON.stringify({ status: "processing" })
+          body: JSON.stringify({ status: "processing" }),
         });
 
+        // =========================================================================
+        // 🔥 SUNTIKAN OTOMATISASI BARU: ADOPSI IDENTITAS PROYEK DARI DATABASE
+        // =========================================================================
+        // Robot Scraper langsung menyimpan project_id bawaan dari tugas ke memorinya
+        await chrome.storage.local.set({
+          project_id: targetTask.project_id || "PRJ-UNASSIGNED",
+          category_group: targetTask.category_group || "General",
+          keyword: targetTask.keyword || "unknown", // Ambil keyword pencarian aslinya jika ada
+        });
+        console.log(
+          `[Avalon Scraper] Memori sinkron! Proyek aktif otomatis berubah menjadi: ${targetTask.project_id}`,
+        );
+        // =========================================================================
+
         return {
-          tasks: [{
-            id: targetTask.id,
-            expected_url: targetTask.url,
-            task_type: targetTask.task_type || "home_page",
-            status: "queued",
-            expiry: "",
-            key: "",
-            priority: 1
-          }],
-          config: { delay_min: 5000, delay_max: 12000 }
+          tasks: [
+            {
+              id: targetTask.id,
+              expected_url: targetTask.url,
+              task_type: targetTask.task_type || "home_page",
+              status: "queued",
+              expiry: "",
+              key: "",
+              priority: 1,
+            },
+          ],
+          config: { delay_min: 5000, delay_max: 12000 },
         };
       } catch (e) {
         console.error("[Avalon Scraper Core Fetch Error]:", e);
@@ -3617,60 +3643,104 @@ var background = (function () {
 
   async function Ft(e) {
     try {
-      const payloadData = e.data || e;
+      // FIX 1: Bongkar bungkus objek payload secara presisi
+      const payloadData = e.payload || e.data || e;
+
+      // FIX 2: Tarik paksa data identitas SaaS dari chrome storage secara asinkronus
+      const storage = await chrome.storage.local.get([
+        "project_id",
+        "category_group",
+        "keyword",
+      ]);
+      const projectId = storage.project_id || "PRJ-UNASSIGNED";
+      const categoryGroup = storage.category_group || "General";
+      const searchQuery = storage.keyword || "unknown";
+
       const supabasePayload = {
         email: payloadData.email || "bot@extension.local",
         username: payloadData.username || "scraperbot",
-        data_type: payloadData.api_url ? payloadData.api_url.split("/api/v4/")[1] || "pdp.get_pc" : "pdp.unknown",
+        data_type: payloadData.api_url
+          ? payloadData.api_url.split("/api/v4/")[1] || "pdp.get_pc"
+          : "pdp.unknown",
         page_url: payloadData.page_url || "unknown",
         api_url: payloadData.api_url || "",
-        raw_payload: payloadData
+        raw_payload: payloadData,
+
+        // SUNTIKAN INTEGRASI BARU UNTUK MULTI-TENANT AVALON
+        project_id: projectId,
+        category_group: categoryGroup,
+        search_query: searchQuery,
       };
+
       const res = await Promise.race([
         fetch(SUPABASE_LOGS_ENDPOINT, {
           method: "POST",
           cache: "no-cache",
           headers: {
             "Content-Type": "application/json",
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify(supabasePayload),
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 10000),
+        ),
       ]);
       return { ok: res.ok, status: res.status };
     } catch (t) {
+      console.error("[Avalon Background] Gagal kirim webhook Shopee:", t);
       return { ok: false, status: 500, error: String(t) };
     }
   }
 
   async function Dt(e) {
     try {
-      const payloadData = e.data || e;
+      // FIX 1: Bongkar bungkus objek payload TikTok secara presisi
+      const payloadData = e.payload || e.data || e;
+
+      // FIX 2: Tarik data identitas SaaS dari storage
+      const storage = await chrome.storage.local.get([
+        "project_id",
+        "category_group",
+        "keyword",
+      ]);
+      const projectId = storage.project_id || "PRJ-UNASSIGNED";
+      const categoryGroup = storage.category_group || "General";
+      const searchQuery = storage.keyword || "unknown";
+
       const supabasePayload = {
         email: payloadData.email || "bot@extension.local",
         username: payloadData.username || "tiktok",
         data_type: "router.data",
         page_url: payloadData.page_url || "unknown",
         api_url: payloadData.api_url || "tiktok/router/data",
-        raw_payload: payloadData
+        raw_payload: payloadData,
+
+        // SUNTIKAN INTEGRASI BARU UNTUK MULTI-TENANT AVALON (TIKTOK VECTORS)
+        project_id: projectId,
+        category_group: categoryGroup,
+        search_query: searchQuery,
       };
+
       const res = await Promise.race([
         fetch(SUPABASE_LOGS_ENDPOINT, {
           method: "POST",
           cache: "no-cache",
           headers: {
             "Content-Type": "application/json",
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify(supabasePayload),
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 10000),
+        ),
       ]);
       return { ok: res.ok, status: res.status };
     } catch (t) {
+      console.error("[Avalon Background] Gagal kirim webhook TikTok:", t);
       return { ok: false, status: 500, error: String(t) };
     }
   }
