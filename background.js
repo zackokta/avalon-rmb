@@ -1897,7 +1897,8 @@ var background = function() {
         g = new Set(), // activeTabsFetching: tabs currently being processed
         f = !1, // isExecuting: whether a task is currently executing (NEW FLAG)
         taskExecutionActive = !1, // Track if task execution is in progress
-        taskCounter = 0, // Counter for micro-bursting rhythm
+        taskCounter = 0,           // Counter for micro-bursting rhythm
+        currentBurstLength = 4,    // Dynamic burst length (akan di-randomize)
         tabTimeouts = new Map(), // Tab Timeout Manager: tabId -> timeoutId
         activeTabs = new Set(); // Active task tabs: tabId set
 
@@ -1907,6 +1908,72 @@ var background = function() {
       // Anti-detection utilities
       const AntiDetection = {
         _cachedHeaders: null,
+        _lastHeaderRefresh: 0,
+        _headerRefreshInterval: 25 * 60 * 1000, // 25 menit
+
+        // ==================== CIRCUIT BREAKER ====================
+        circuitBreaker: {
+          failureCount: 0,
+          lastFailureTime: 0,
+          isOpen: false,
+          threshold: 3,                    // Buka setelah 3 error berturut-turut
+          cooldownMin: 10 * 60 * 1000,     // 10 menit
+          cooldownMax: 20 * 60 * 1000,     // 20 menit
+
+          recordFailure: function() {
+            this.failureCount++;
+            this.lastFailureTime = Date.now();
+            console.log(`[CircuitBreaker] Failure recorded. Count: ${this.failureCount}`);
+
+            if (this.failureCount >= this.threshold && !this.isOpen) {
+              this.isOpen = true;
+              const cooldown = x(this.cooldownMin, this.cooldownMax);
+              console.warn(`[CircuitBreaker] OPENED! Pausing for ${Math.round(cooldown / 1000 / 60)} minutes due to repeated failures.`);
+              
+              // Simpan ke storage agar persist
+              chrome.storage.local.set({
+                circuitBreakerOpen: true,
+                circuitBreakerUntil: Date.now() + cooldown
+              });
+            }
+          },
+
+          recordSuccess: function() {
+            if (this.failureCount > 0) {
+              console.log(`[CircuitBreaker] Success recorded. Resetting failure count.`);
+            }
+            this.failureCount = 0;
+            this.isOpen = false;
+            chrome.storage.local.remove(['circuitBreakerOpen', 'circuitBreakerUntil']);
+          },
+
+          shouldAllowRequest: async function() {
+            if (!this.isOpen) return true;
+
+            const data = await chrome.storage.local.get(['circuitBreakerUntil']);
+            const until = data.circuitBreakerUntil || 0;
+
+            if (Date.now() > until) {
+              // Cooldown selesai → setengah terbuka (coba lagi)
+              console.log("[CircuitBreaker] Cooldown finished. Trying again (Half-Open).");
+              this.isOpen = false;
+              return true;
+            }
+
+            const remaining = Math.round((until - Date.now()) / 1000 / 60);
+            console.log(`[CircuitBreaker] Still in cooldown. ${remaining} minutes remaining.`);
+            return false;
+          },
+
+          reset: function() {
+            this.failureCount = 0;
+            this.isOpen = false;
+            this.lastFailureTime = 0;
+            chrome.storage.local.remove(['circuitBreakerOpen', 'circuitBreakerUntil']);
+            console.log("[CircuitBreaker] Manually reset.");
+          }
+        },
+
 
         // Clamp backend delays to local 3-8s range for optimized execution
         clampDelayConfig: (config) => {
@@ -1948,44 +2015,58 @@ var background = function() {
           return x(Math.max(3000, min * 0.6), Math.min(8000, max * 0.6));
         },
 
-        // Generate randomized request headers to avoid fingerprinting (sticky per session)
+        // Generate randomized request headers
         getRandomHeaders: () => {
-          if (AntiDetection._cachedHeaders) return AntiDetection._cachedHeaders;
+          const now = Date.now();
+          const shouldRefresh =
+            !AntiDetection._cachedHeaders ||
+            now - AntiDetection._lastHeaderRefresh > AntiDetection._headerRefreshInterval;
 
-          const userAgents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          ];
+          if (shouldRefresh) {
+            console.log("[AntiDetection] Refreshing randomized headers...");
 
-          AntiDetection._cachedHeaders = {
-            "User-Agent":
-              userAgents[Math.floor(Math.random() * userAgents.length)],
-            Accept:
-              "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": [
-              "en-US,en;q=0.9",
-              "en-GB,en;q=0.8",
-              "id-ID,id;q=0.9",
-            ][Math.floor(Math.random() * 3)],
-            "Accept-Encoding": "gzip, deflate, br",
-            DNT: Math.random() > 0.5 ? "1" : "0",
-            "Cache-Control": ["max-age=0", "no-cache", "no-store"][
-              Math.floor(Math.random() * 3)
-            ],
-            Pragma: Math.random() > 0.5 ? "no-cache" : "cache",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": Math.random() > 0.7 ? "cross-site" : "none",
-          };
+            const userAgents = [
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            ];
+
+            AntiDetection._cachedHeaders = {
+              "User-Agent": userAgents[Math.floor(Math.random() * userAgents.length)],
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+              "Accept-Language": ["en-US,en;q=0.9", "en-GB,en;q=0.8", "id-ID,id;q=0.9"][
+                Math.floor(Math.random() * 3)
+              ],
+              "Accept-Encoding": "gzip, deflate, br",
+              DNT: Math.random() > 0.5 ? "1" : "0",
+              "Cache-Control": ["max-age=0", "no-cache", "no-store"][Math.floor(Math.random() * 3)],
+              Pragma: Math.random() > 0.5 ? "no-cache" : "cache",
+              "Sec-Fetch-Dest": "document",
+              "Sec-Fetch-Mode": "navigate",
+              "Sec-Fetch-Site": Math.random() > 0.7 ? "cross-site" : "none",
+            };
+
+            AntiDetection._lastHeaderRefresh = now;
+          }
 
           return AntiDetection._cachedHeaders;
         },
 
+        // Force refresh headers (bisa dipanggil manual)
+        forceRefreshHeaders: () => {
+          AntiDetection._cachedHeaders = null;
+          AntiDetection._lastHeaderRefresh = 0;
+          return AntiDetection.getRandomHeaders();
+        },
+
         // Apply sticky headers rule using declarativeNetRequest
-        applyStickyHeadersRule: async function () {
+        applyStickyHeadersRule: async function (forceRefresh = false) {
+          if (forceRefresh) {
+            AntiDetection.forceRefreshHeaders();
+          }
+
           const headers = AntiDetection.getRandomHeaders();
           const requestHeaders = Object.entries(headers).map(([key, val]) => ({
             header: key,
@@ -1993,23 +2074,28 @@ var background = function() {
             value: val,
           }));
 
-          await chrome.declarativeNetRequest.updateDynamicRules({
-            removeRuleIds: [999],
-            addRules: [
-              {
-                id: 999,
-                priority: 1,
-                action: {
-                  type: "modifyHeaders",
-                  requestHeaders: requestHeaders,
+          try {
+            await chrome.declarativeNetRequest.updateDynamicRules({
+              removeRuleIds: [999],
+              addRules: [
+                {
+                  id: 999,
+                  priority: 1,
+                  action: {
+                    type: "modifyHeaders",
+                    requestHeaders: requestHeaders,
+                  },
+                  condition: {
+                    urlFilter: "*://*.shopee.*/*",
+                    resourceTypes: ["main_frame", "xmlhttprequest"],
+                  },
                 },
-                condition: {
-                  urlFilter: "*://*.shopee.*/*",
-                  resourceTypes: ["main_frame", "xmlhttprequest"],
-                },
-              },
-            ],
-          });
+              ],
+            });
+            console.log("[AntiDetection] Sticky headers rule applied/updated");
+          } catch (e) {
+            console.error("[AntiDetection] Failed to apply headers rule:", e);
+          }
         },
 
         // Variable scroll behavior to avoid bot detection
@@ -2387,24 +2473,42 @@ var background = function() {
       };
       async function _(d, u, m, w) {
         try {
-          // Increment task counter for micro-bursting
+          // ==================== IMPROVED MICRO-BURSTING ====================
           taskCounter++;
 
-          // Calculate delay based on micro-bursting rhythm
+          // Tentukan apakah saat ini dalam fase burst atau breath
+          const isInBurstPhase = taskCounter <= currentBurstLength;
+
           let delayMin, delayMax;
-          if (taskCounter <= 4) {
-            // Burst phase: 1-4 tasks with 800-1500ms delays
-            delayMin = 800;
-            delayMax = 1500;
+
+          if (isInBurstPhase) {
+            // === BURST PHASE ===
+            // Delay lebih manusiawi: 2.5 detik - 6 detik
+            delayMin = 2500;
+            delayMax = 6000;
+
+            console.log(`[MicroBurst] Burst phase (${taskCounter}/${currentBurstLength})`);
           } else {
-            // Breath phase: 5th task with 15000-20000ms delay, then reset counter
-            delayMin = 15000;
-            delayMax = 20000;
-            taskCounter = 0; // Reset counter after breath
+            // === BREATH PHASE ===
+            // Jeda lebih panjang dan variatif setelah burst selesai
+            delayMin = 18000;   // 18 detik
+            delayMax = 45000;   // 45 detik
+
+            console.log(`[MicroBurst] Breath phase - Taking longer break...`);
+
+            // Reset untuk burst berikutnya dengan panjang random
+            taskCounter = 0;
+            currentBurstLength = x(3, 6); // Random burst length 3-6 tasks
           }
 
+          // Terapkan region safety multiplier
+          const regionMultiplier = AntiDetection.getRegionSafetyMultiplier(O || "id");
+          delayMin = Math.round(delayMin * regionMultiplier);
+          delayMax = Math.round(delayMax * regionMultiplier);
+
+          // Final randomized delay
           const o = x(delayMin, delayMax),
-            i = `Processing task with ${o}ms delay (burst ${taskCounter + 1}/5)...`;
+            i = `Processing task with ${o}ms delay (burst ${taskCounter}/${currentBurstLength})...`;
           if (a) {
             await h(
               "updateMessage",
@@ -2449,6 +2553,7 @@ var background = function() {
           });
         } catch (o) {
           console.error("Process task failed:", o);
+          AntiDetection.circuitBreaker.recordFailure();
           const i = o instanceof Error ? o.message : String(o);
           throw (
             await h(
@@ -2651,6 +2756,17 @@ var background = function() {
           );
           return;
         }
+
+        // Refresh header randomization saat mulai sesi baru
+        await AntiDetection.applyStickyHeadersRule(true);
+
+        // === CIRCUIT BREAKER CHECK ===
+        const canProceed = await AntiDetection.circuitBreaker.shouldAllowRequest();
+        if (!canProceed) {
+          console.log("[CircuitBreaker] Request blocked by circuit breaker.");
+          return;
+        }
+
         await new Promise((i) => setTimeout(i, 2e3));
         const u = await K();
         if (!u?.id) {
@@ -2858,6 +2974,7 @@ var background = function() {
           try {
             await _(o.tasks[0], m, o.config.delay_min, o.config.delay_max);
             success = true;
+            AntiDetection.circuitBreaker.recordSuccess();
           } finally {
             f = !1;
           }
@@ -2971,6 +3088,7 @@ var background = function() {
         }
       }),
         B("stopTaskFetching", async () => {
+          AntiDetection.circuitBreaker.reset();
           (s && (clearTimeout(s), (s = void 0)),
             await chrome.alarms.clear("fetchTasks"),
             (n = !1),
@@ -2978,6 +3096,7 @@ var background = function() {
             (a = !1),
             (taskExecutionActive = !1),
             (taskCounter = 0),
+            (currentBurstLength = 4),
             await new Promise((u) => setTimeout(u, 500)),
             g.clear());
           const d = await K();
@@ -3068,6 +3187,7 @@ var background = function() {
         }),
         B("captchaFailed", async ({ data: d }) => {
           console.log("Captcha failed after", d.attempts, "attempts");
+          AntiDetection.circuitBreaker.recordFailure();
           await chrome.storage.local.set({
             captchaFailure: true,
             captchaFailureTime: Date.now(),
