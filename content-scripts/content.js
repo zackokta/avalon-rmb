@@ -3398,6 +3398,160 @@ var content = (function () {
     }
   }
   const R = Q.getInstance();
+
+  // ==================== ENHANCED HUMAN-LIKE BEHAVIOR (Final Improved) ====================
+  async function performHumanLikeBehavior() {
+    try {
+      await sleep(700 + Math.random() * 1100);
+
+      const actionRoll = Math.random();
+
+      // 1. Mouse Movement utama
+      if (actionRoll < 0.87) {
+        await simulateNaturalMouseMovement();
+      }
+
+      // 2. Hover produk
+      if (actionRoll > 0.20 && actionRoll < 0.55) {
+        await randomProductHover();
+      }
+
+      // 3. Scroll
+      if (actionRoll > 0.30) {
+        await naturalScroll();
+      }
+
+      // 4. Idle + Reading Behavior
+      if (actionRoll > 0.45) {
+        const idleDuration = 1600 + Math.random() * 3800;
+        console.log(`[HumanBehavior] Idle/Reading time: ${Math.round(idleDuration)}ms`);
+        await sleep(idleDuration);
+
+        // === READING BEHAVIOR ===
+        if (Math.random() > 0.55) {
+          // Gerakan mouse kecil seperti sedang membaca
+          await simulateMicroMovement(900 + Math.random() * 1500);
+        } else if (Math.random() > 0.4) {
+          // Scroll kecil seperti sedang membaca
+          await naturalScroll();
+        }
+      }
+
+      // 5. Gerakan tambahan
+      if (actionRoll > 0.70) {
+        await simulateNaturalMouseMovement(1);
+      }
+
+      // 6. Long idle (jarang)
+      if (actionRoll > 0.91) {
+        const longIdle = 4500 + Math.random() * 3500;
+        console.log(`[HumanBehavior] Long idle: ${Math.round(longIdle)}ms`);
+        await sleep(longIdle);
+      }
+
+      console.log("[HumanBehavior] Enhanced human behavior completed");
+    } catch (err) {
+      console.log("[HumanBehavior] Error (non-critical):", err.message);
+    }
+  }
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  // ==================== NATURAL MOUSE MOVEMENT (Advanced - dengan Hesitation & Micro-movement) ====================
+  async function simulateNaturalMouseMovement(times = null) {
+    const moveCount = times || (Math.floor(Math.random() * 3) + 2);
+
+    for (let i = 0; i < moveCount; i++) {
+      const startX = Math.random() * window.innerWidth * 0.75 + window.innerWidth * 0.12;
+      const startY = Math.random() * window.innerHeight * 0.55 + window.innerHeight * 0.18;
+
+      const endX = Math.random() * window.innerWidth * 0.75 + window.innerWidth * 0.12;
+      const endY = Math.random() * window.innerHeight * 0.6 + window.innerHeight * 0.12;
+
+      // Bezier control points
+      const cp1x = startX + (endX - startX) * (0.25 + Math.random() * 0.35);
+      const cp1y = startY + (Math.random() - 0.5) * 140;
+
+      const cp2x = startX + (endX - startX) * (0.55 + Math.random() * 0.35);
+      const cp2y = endY + (Math.random() - 0.5) * 110;
+
+      const steps = 8 + Math.floor(Math.random() * 7); // 8-14 titik
+
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+
+        const x = Math.pow(1 - t, 3) * startX +
+                  3 * Math.pow(1 - t, 2) * t * cp1x +
+                  3 * (1 - t) * Math.pow(t, 2) * cp2x +
+                  Math.pow(t, 3) * endX;
+
+        const y = Math.pow(1 - t, 3) * startY +
+                  3 * Math.pow(1 - t, 2) * t * cp1y +
+                  3 * (1 - t) * Math.pow(t, 2) * cp2y +
+                  Math.pow(t, 3) * endY;
+
+        document.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true,
+          clientX: x,
+          clientY: y
+        }));
+
+        // === HESITATION: Kadang jeda lebih lama di tengah perjalanan ===
+        let moveDelay = 14 + Math.random() * 50;
+
+        if (s > steps * 0.3 && s < steps * 0.7 && Math.random() > 0.75) {
+          moveDelay += 80 + Math.random() * 120; // hesitation
+        }
+
+        await sleep(moveDelay);
+      }
+
+      // Jeda antar gerakan utama
+      await sleep(200 + Math.random() * 400);
+    }
+  }
+  async function randomProductHover() {
+    const productElements = document.querySelectorAll('.shopee-search-item-result__item, .product-card, [class*="product"], [class*="item-card"]');
+    if (productElements.length === 0) return;
+    const target = productElements[Math.floor(Math.random() * productElements.length)];
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const hoverX = rect.left + rect.width * (0.25 + Math.random() * 0.5);
+    const hoverY = rect.top + rect.height * (0.25 + Math.random() * 0.5);
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: hoverX, clientY: hoverY }));
+    await sleep(280 + Math.random() * 450);
+    target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: hoverX, clientY: hoverY }));
+    await sleep(750 + Math.random() * 1400);
+    target.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+  }
+  async function naturalScroll() {
+    const scrollAmount = Math.random() * 480 + 200;
+    const direction = Math.random() > 0.12 ? 1 : -1;
+    window.scrollBy({ top: scrollAmount * direction, behavior: 'smooth' });
+    await sleep(950 + Math.random() * 1600);
+  }
+
+  // ==================== MICRO MOVEMENT (Gerakan kecil saat idle / membaca) ====================
+  async function simulateMicroMovement(durationMs = 1200) {
+    const startTime = Date.now();
+    const centerX = window.innerWidth * (0.3 + Math.random() * 0.4);
+    const centerY = window.innerHeight * (0.3 + Math.random() * 0.4);
+
+    while (Date.now() - startTime < durationMs) {
+      const offsetX = (Math.random() - 0.5) * 45;
+      const offsetY = (Math.random() - 0.5) * 35;
+
+      document.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true,
+        clientX: centerX + offsetX,
+        clientY: centerY + offsetY
+      }));
+
+      await sleep(180 + Math.random() * 320);
+    }
+  }
+  // ==================== END HUMAN BEHAVIOR ====================
+
   class v {
     static CONTAINER = document.documentElement || document.body;
     static CREDITS_URL =
@@ -3916,49 +4070,66 @@ var content = (function () {
     }
   }
 
-  // Broader captcha detection for stability when solver is disabled
+  // ==================== IMPROVED CAPTCHA MONITOR ====================
   async function captchaMonitor() {
     const instance = new v();
     let captchaDetectedTime = null;
+    let failureCount = 0;
+    const MAX_FAILURES = 3;
+
     while (true) {
-      // AVALON 4-D FIX: Cegah Memory Leak & Zombie Loop jika ekstensi di-reload
+      // AVALON 4-D FIX: Cegah memory leak jika ekstensi di-reload
       if (!te?.runtime?.id) {
-        console.log(
-          "[Avalon] Ekstensi di-reload. Mematikan Captcha Monitor lama.",
-        );
+        console.log("[Avalon] Ekstensi di-reload. Mematikan Captcha Monitor.");
         break;
       }
 
-      if (instance.captchaIsPresent()) {
+      const isCaptchaPresent = instance.captchaIsPresent();
+
+      if (isCaptchaPresent) {
         if (!captchaDetectedTime) {
           captchaDetectedTime = Date.now();
-        } else if (Date.now() - captchaDetectedTime > 30000) {
-          // 30 seconds
-          const apiKey = localStorage.getItem("sadCaptchaKey");
-          let solverEnabled = false;
-          if (apiKey) {
-            try {
-              const response = await fetch(v.CREDITS_URL + apiKey);
-              const data = await response.json();
-              if (data.credits > 0) solverEnabled = true;
-            } catch (e) {}
-          }
-          if (!solverEnabled) {
-            try {
-              Y("captchaFailed", {
-                attempts: 0,
-                reason: "Solver disabled or no credits",
-              });
-            } catch (e) {}
-            break;
+          console.log("[CaptchaMonitor] Captcha terdeteksi.");
+        } else {
+          const timeSinceDetected = Date.now() - captchaDetectedTime;
+
+          // Jika captcha muncul > 25 detik dan solver tidak aktif
+          if (timeSinceDetected > 25000) {
+            const apiKey = localStorage.getItem("sadCaptchaKey");
+            let solverEnabled = false;
+
+            if (apiKey) {
+              try {
+                const response = await fetch(v.CREDITS_URL + apiKey);
+                const data = await response.json();
+                if (data.credits > 0) solverEnabled = true;
+              } catch (e) {}
+            }
+
+            if (!solverEnabled) {
+              try {
+                await Y("captchaFailed", {
+                  attempts: failureCount,
+                  reason: "Solver disabled or no credits",
+                  timestamp: Date.now()
+                });
+              } catch (e) {}
+
+              console.log("[CaptchaMonitor] Solver tidak aktif. Menghentikan monitor.");
+              break;
+            }
           }
         }
       } else {
+        // Reset jika captcha sudah hilang
         captchaDetectedTime = null;
+        failureCount = 0;
       }
-      await new Promise((r) => setTimeout(r, 5000)); // Check every 5s
+
+      await new Promise((r) => setTimeout(r, 4000)); // Cek setiap 4 detik
     }
   }
+  // ==================== END IMPROVED CAPTCHA MONITOR ====================
 
   // Start the monitor
   captchaMonitor();
@@ -4020,6 +4191,11 @@ var content = (function () {
           this.remove();
         };
         (document.head || document.documentElement).appendChild(e);
+
+        if (Math.random() > 0.30) {
+          await performHumanLikeBehavior();
+        }
+
         const [n, s] = Bt("username", (await R.getSetting("username")) || ""),
           [r, o] = Bt("email", (await R.getSetting("email")) || ""),
           [i, a] = In({
@@ -4084,44 +4260,39 @@ var content = (function () {
             window.location.reload();
           }),
           $("performRandomScroll", async () => {
-            // Autonomous randomized scrolling to trigger lazy-loaded API elements
-            const performAutonomousScroll = () => {
+            console.log("[Autonomous Scroll] Starting enhanced autonomous scrolling...");
+
+            const performNaturalScroll = async () => {
               let scrollCount = 0;
-              const maxScrolls = 5;
+              const maxScrolls = 4 + Math.floor(Math.random() * 3); // 4 - 6 kali scroll
 
-              const scrollStep = () => {
-                if (scrollCount >= maxScrolls) {
-                  console.log("[Autonomous Scroll] Completed 5 scroll actions");
-                  return;
-                }
+              while (scrollCount < maxScrolls) {
+                // Random distance antara 550px - 1250px
+                const distance = Math.floor(Math.random() * (1250 - 550 + 1)) + 550;
 
-                // Randomize distance between 600px and 1200px
-                const distance =
-                  Math.floor(Math.random() * (1200 - 600 + 1)) + 600;
+                // Kadang scroll ke atas (15% kemungkinan)
+                const direction = Math.random() < 0.15 ? -1 : 1;
 
-                // Use window.scrollBy with smooth behavior
                 window.scrollBy({
-                  top: distance,
+                  top: distance * direction,
                   behavior: "smooth",
                 });
 
                 scrollCount++;
                 console.log(
-                  `[Autonomous Scroll] Scroll ${scrollCount}/${maxScrolls}: ${distance}px`,
+                  `[Autonomous Scroll] Scroll ${scrollCount}/${maxScrolls} | Distance: ${distance}px | Direction: ${direction > 0 ? "down" : "up"}`
                 );
 
-                // Schedule next scroll with random delay between 2000ms and 4000ms
-                const delay =
-                  Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
-                setTimeout(scrollStep, delay);
-              };
+                // Delay antar scroll: 1800ms - 4200ms (lebih natural)
+                const delay = Math.floor(Math.random() * (4200 - 1800 + 1)) + 1800;
+                await new Promise((resolve) => setTimeout(resolve, delay));
+              }
 
-              // Start the scrolling sequence immediately after minimal DOM interaction
-              setTimeout(scrollStep, 100);
+              console.log("[Autonomous Scroll] Completed enhanced scrolling sequence.");
             };
 
-            // Trigger the autonomous scrolling
-            performAutonomousScroll();
+            // Mulai scrolling setelah jeda kecil
+            setTimeout(performNaturalScroll, 150);
           }),
           $("solveCaptcha", async () => {
             console.log("Received request to solve captcha. Starting now.");
