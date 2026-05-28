@@ -2509,7 +2509,13 @@ const Ge = "https://rentmybrowser.com",
     const [a, o] = G("id");
     const [c, u] = qe("email", "");
     const [p, h] = qe("captchaSolverEnabled", !1);
-    const [v, x] = G(!1);
+    const [v, x] = G(!1), [d, l] = G({
+      isOpen: false,
+      failureCount: 0,
+      threshold: 3,
+      remainingMinutes: 0,
+      isInCooldown: false,
+    });
     chrome.storage.local.get(["isFetching"], (res) => {
       if (res.isFetching !== undefined) i(res.isFetching);
     });
@@ -2534,6 +2540,9 @@ const Ge = "https://rentmybrowser.com",
         }
       };
       y();
+      fetchCircuitBreakerStatus();
+      const interval = setInterval(fetchCircuitBreakerStatus, 10000);
+      ze(() => clearInterval(interval));
       const b = (l, g) => {
           g.status === "complete" && y();
         },
@@ -2677,6 +2686,14 @@ const Ge = "https://rentmybrowser.com",
           ),
           n() && (await F()));
       };
+    const fetchCircuitBreakerStatus = async () => {
+      try {
+        const status = await D("getCircuitBreakerStatus", {});
+        if (status) l(status);
+      } catch (err) {
+        console.error("Failed to fetch Circuit Breaker status:", err);
+      }
+    };
     return (() => {
       var y = ur(),
         b = y.firstChild,
@@ -2828,6 +2845,52 @@ const Ge = "https://rentmybrowser.com",
                                   g.style.setProperty("color", "#856404"),
                                   g
                                 );
+                              },
+                            }),
+                            oe(be, {
+                              get when() {
+                                return d().isOpen || d().failureCount > 0;
+                              },
+                              get children() {
+                                var g = document.createElement("div");
+                                var f = document.createElement("div");
+                                var A = document.createElement("div");
+                                var P = document.createElement("div");
+                                var I = document.createElement("div");
+                                g.style.setProperty("margin-top", "12px");
+                                g.style.setProperty("padding", "10px");
+                                g.style.setProperty(
+                                  "background-color",
+                                  d().isOpen ? "#fff3cd" : "#f8d7da"
+                                );
+                                g.style.setProperty("border-radius", "6px");
+                                g.style.setProperty(
+                                  "border",
+                                  d().isOpen ? "1px solid #ffc107" : "1px solid #dc3545"
+                                );
+                                f.style.setProperty("font-weight", "600");
+                                f.style.setProperty("margin-bottom", "4px");
+                                J(f, d().isOpen ? "⚠️ Circuit Breaker Active" : "Recent Failures");
+                                A.style.setProperty("font-size", "13px");
+                                A.style.setProperty("color", "#555");
+                                J(A, "Failures: " + d().failureCount + " / " + d().threshold);
+                                g.appendChild(f);
+                                g.appendChild(A);
+                                if (d().isInCooldown) {
+                                  P.style.setProperty("font-size", "13px");
+                                  P.style.setProperty("color", "#856404");
+                                  P.style.setProperty("margin-top", "4px");
+                                  J(P, "Paused for ~" + d().remainingMinutes + " minute(s)");
+                                  g.appendChild(P);
+                                }
+                                if (d().isOpen && !d().isInCooldown) {
+                                  I.style.setProperty("font-size", "13px");
+                                  I.style.setProperty("color", "#721c24");
+                                  I.style.setProperty("margin-top", "4px");
+                                  J(I, "Will retry soon...");
+                                  g.appendChild(I);
+                                }
+                                return g;
                               },
                             }),
                           ];

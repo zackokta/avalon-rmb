@@ -3274,6 +3274,28 @@ var background = function() {
           }
         }),
         B("keepAlivePing", () => true));
+
+        // ==================== CIRCUIT BREAKER STATUS ====================
+        B("getCircuitBreakerStatus", async () => {
+          const cb = AntiDetection.circuitBreaker;
+          
+          let until = 0;
+          try {
+            const data = await chrome.storage.local.get(["circuitBreakerUntil"]);
+            until = data.circuitBreakerUntil || 0;
+          } catch (e) {}
+
+          const remainingMs = until > Date.now() ? until - Date.now() : 0;
+          const remainingMinutes = Math.ceil(remainingMs / 1000 / 60);
+
+          return {
+            isOpen: cb.isOpen,
+            failureCount: cb.failureCount,
+            threshold: cb.threshold,
+            remainingMinutes: remainingMinutes,
+            isInCooldown: cb.isOpen && remainingMs > 0,
+          };
+        });
     });
 
     function Nt() {}
