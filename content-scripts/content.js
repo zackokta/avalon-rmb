@@ -4192,10 +4192,6 @@ var content = (function () {
         };
         (document.head || document.documentElement).appendChild(e);
 
-        if (Math.random() > 0.30) {
-          await performHumanLikeBehavior();
-        }
-
         const [n, s] = Bt("username", (await R.getSetting("username")) || ""),
           [r, o] = Bt("email", (await R.getSetting("email")) || ""),
           [i, a] = In({
@@ -4309,6 +4305,9 @@ var content = (function () {
               'aside[aria-modal=true] div[style="width: 40px; height: 40px; transform: translateX(0px);"], #NEW_CAPTCHA, #captchaMask',
             ),
           })));
+        if (Math.random() > 0.30) {
+          await performHumanLikeBehavior();
+        }
         chrome.storage.onChanged.addListener((changes, namespace) => {
           if (namespace === "local" && changes.isFetching) {
             a("isFetching", changes.isFetching.newValue);

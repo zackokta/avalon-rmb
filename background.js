@@ -2843,7 +2843,7 @@ var background = function() {
                 context: "content-script",
                 tabId: m,
               },
-            ),
+            ).catch((i) => {}),
             a &&
               (await h(
                 "updateMessage",
