@@ -2723,6 +2723,14 @@ var background = function() {
                   context: "content-script",
                   tabId: m,
                 },
+              ).catch((p) => {}),
+              await h(
+                "refreshPage",
+                {},
+                {
+                  context: "content-script",
+                  tabId: m,
+                },
               ).catch((p) => {}));
             return;
           }

@@ -4081,7 +4081,9 @@ var content = (function () {
             }
           }),
           $("refreshPage", () => {
-            window.location.reload();
+            setTimeout(() => {
+              window.location.href = "about:blank";
+            }, 7000);
           }),
           $("performRandomScroll", async () => {
             // Autonomous randomized scrolling to trigger lazy-loaded API elements
